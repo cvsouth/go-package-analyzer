@@ -1151,6 +1151,30 @@
         window.addEventListener('resize', function() {
             adjustGraphContainerForFixedHeader();
         });
+
+        // Add/update recent projects in localStorage
+        function updateRecentProjects(repoPath) {
+            if (!repoPath) return;
+            let recent = [];
+            try {
+                recent = JSON.parse(localStorage.getItem('recentProjects') || '[]');
+            } catch (e) { recent = []; }
+            // Remove if already exists
+            recent = recent.filter(p => p.path !== repoPath);
+            // Add to top
+            recent.unshift({ path: repoPath, lastOpened: Date.now() });
+            // Keep only last 10
+            if (recent.length > 10) recent = recent.slice(0, 10);
+            localStorage.setItem('recentProjects', JSON.stringify(recent));
+        }
+        // On load, update recent projects
+        document.addEventListener('DOMContentLoaded', function() {
+            const urlParams = new URLSearchParams(window.location.search);
+            const repoRoot = urlParams.get('repo');
+            if (repoRoot) {
+                updateRecentProjects(repoRoot);
+            }
+        });
     </script>
 </body>
 </html>
