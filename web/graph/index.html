@@ -788,6 +788,9 @@
                     throw new Error('No entry points found in the repository');
                 }
 
+                // Only add to recent projects if analysis succeeded
+                updateRecentProjects(repoRoot);
+
                 // Try to load the remembered entry point for this repo
                 const rememberedEntryPointPath = loadSelectedEntryPoint(currentRepoRoot);
                 currentEntryPointIndex = 0; // Default to first entry point
@@ -1167,14 +1170,6 @@
             if (recent.length > 10) recent = recent.slice(0, 10);
             localStorage.setItem('recentProjects', JSON.stringify(recent));
         }
-        // On load, update recent projects
-        document.addEventListener('DOMContentLoaded', function() {
-            const urlParams = new URLSearchParams(window.location.search);
-            const repoRoot = urlParams.get('repo');
-            if (repoRoot) {
-                updateRecentProjects(repoRoot);
-            }
-        });
     </script>
 </body>
 </html>

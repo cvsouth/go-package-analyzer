@@ -14,14 +14,16 @@
         }
     </style>
 </head>
-<body class="m-0 p-0 h-screen bg-black text-white flex flex-row">
-    <div id="recentProjectsSidebar" class="h-screen w-[480px] border-r border-white/10 flex-shrink-0 overflow-y-auto">
+<body class="m-0 p-0 h-screen bg-black text-white flex">
+    <div id="recentProjectsSidebar" class="fixed left-0 top-0 h-screen w-[360px] 2xl:w-[480px] border-r border-white/10 overflow-y-auto bg-transparent z-40">
         <ul id="recentProjectsList" class="w-full"></ul>
     </div>
-    <div class="flex-1 flex flex-col justify-center items-center w-full max-w-[600px] mx-auto">
-        <div class="text-center flex flex-col items-center w-full max-w-[600px]">
-            <input id="repoInput" type="text" placeholder="Path to Go repository root e.g. /path/to/project" 
-                   class="px-5 py-3 text-base border-none bg-white/10 text-white w-full mb-5 focus:outline-none rounded-none" 
+    <!-- Spacer div for sidebar width on small screens -->
+    <div id="recentProjectsSidebarSpacer" class="block 2xl:hidden w-[360px] 2xl:w-[480px]" aria-hidden="true"></div>
+    <div class="flex-1 flex justify-center items-center min-h-screen">
+        <div class="text-center flex flex-col items-center w-full max-w-[450px]">
+            <input id="repoInput" type="text" placeholder="Local project path e.g. /path/to/project"
+                   class="px-5 py-3 text-base border-none bg-white/10 text-white w-[450px] mb-5 focus:outline-none rounded-none"
                    oninput="saveInputValue()" />
             <button onclick="navigateToGraph()" class="px-5 font-medium py-1.5 text-base bg-white text-black border-none cursor-pointer transition-colors hover:bg-gray-200 rounded-none">
                 Analyze Repository
@@ -51,45 +53,51 @@
         }
 
         // Render recent projects list in sidebar
+        function createRecentProjectListItem(proj, idx, recent, renderRecentProjects) {
+            const li = document.createElement('li');
+            li.className = 'flex items-center justify-between px-4 py-3 border-b border-white/10 bg-transparent hover:bg-white/10 transition cursor-pointer';
+            li.title = proj.path;
+            const left = document.createElement('div');
+            left.className = 'flex-1 text-left truncate';
+            left.innerHTML = `<span class='font-mono text-sm'>${proj.path}</span>`;
+            const removeBtn = document.createElement('button');
+            removeBtn.className = 'ml-3 text-white/30 hover:text-red-400 text-2xl font-bold px-2 py-0.5 rounded';
+            removeBtn.title = 'Remove from recent';
+            removeBtn.innerHTML = '&times;';
+            removeBtn.onclick = function(e) {
+                e.stopPropagation();
+                let updated = recent.filter((_, i) => i !== idx);
+                localStorage.setItem('recentProjects', JSON.stringify(updated));
+                renderRecentProjects();
+            };
+            li.onclick = function(e) {
+                if (e.target !== removeBtn) {
+                    window.location.href = `/graph?repo=${encodeURIComponent(proj.path)}`;
+                }
+            };
+            li.appendChild(left);
+            li.appendChild(removeBtn);
+            return li;
+        }
         function renderRecentProjects() {
             let recent = [];
             try {
                 recent = JSON.parse(localStorage.getItem('recentProjects') || '[]');
             } catch (e) { recent = []; }
             const list = document.getElementById('recentProjectsList');
-            list.innerHTML = '';
+            if (list) list.innerHTML = '';
             const sidebar = document.getElementById('recentProjectsSidebar');
+            const sidebarSpacer = document.getElementById('recentProjectsSidebarSpacer');
             if (!recent.length) {
-                sidebar.style.display = 'none';
+                if (sidebar) sidebar.style.display = 'none';
+                if (sidebarSpacer) sidebarSpacer.style.display = 'none';
                 return;
             } else {
-                sidebar.style.display = '';
+                if (sidebar) sidebar.style.display = '';
+                if (sidebarSpacer) sidebarSpacer.style.display = '';
             }
             recent.forEach((proj, idx) => {
-                const li = document.createElement('li');
-                li.className = 'flex items-center justify-between px-4 py-3 border-b border-white/10 bg-transparent hover:bg-white/10 transition cursor-pointer';
-                li.title = proj.path;
-                li.onclick = function(e) {
-                    if (e.target !== removeBtn) {
-                        window.location.href = `/graph?repo=${encodeURIComponent(proj.path)}`;
-                    }
-                };
-                const left = document.createElement('div');
-                left.className = 'flex-1 text-left truncate';
-                left.innerHTML = `<span class='font-mono text-sm'>${proj.path}</span>`;
-                const removeBtn = document.createElement('button');
-                removeBtn.className = 'ml-3 text-white/30 hover:text-red-400 text-2xl font-bold px-2 py-0.5 rounded';
-                removeBtn.title = 'Remove from recent';
-                removeBtn.innerHTML = '&times;';
-                removeBtn.onclick = function(e) {
-                    e.stopPropagation();
-                    let updated = recent.filter((_, i) => i !== idx);
-                    localStorage.setItem('recentProjects', JSON.stringify(updated));
-                    renderRecentProjects();
-                };
-                li.appendChild(left);
-                li.appendChild(removeBtn);
-                list.appendChild(li);
+                list.appendChild(createRecentProjectListItem(proj, idx, recent, renderRecentProjects));
             });
         }
 
