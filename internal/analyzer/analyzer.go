@@ -242,6 +242,7 @@ func (a *Analyzer) analyzePackage(
 		Path:         pkgPath,
 		Dependencies: dependencies,
 		FileCount:    fileCount,
+		Layer:        0,
 	}
 	graph.Packages[pkgPath] = pkgInfo
 

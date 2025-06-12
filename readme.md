@@ -47,7 +47,7 @@ golangci-lint run
 To run the test suite:
 
 ```bash
-go test ./... -json | tparse -all
+go test ./...
 ```
 
 ## Coming soon

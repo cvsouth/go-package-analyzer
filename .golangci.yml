@@ -118,19 +118,19 @@ linters:
     - whitespace # detects leading and trailing whitespace
 
     ## you may want to enable
-    #- decorder # checks declaration order and count of types, constants, variables and functions
-    #- exhaustruct # [highly recommend to enable] checks if all structure fields are initialized
-    #- ginkgolinter # [if you use ginkgo/gomega] enforces standards of using ginkgo and gomega
-    #- godox # detects usage of FIXME, TODO and other keywords inside comments
-    #- goheader # checks is file header matches to pattern
-    #- inamedparam # [great idea, but too strict, need to ignore a lot of cases by default] reports interfaces with unnamed method parameters
-    #- interfacebloat # checks the number of methods inside an interface
-    #- ireturn # accept interfaces, return concrete types
-    #- prealloc # [premature optimization, but can be used in some cases] finds slice declarations that could potentially be preallocated
-    #- tagalign # checks that struct tags are well aligned
-    #- varnamelen # [great idea, but too many false positives] checks that the length of a variable's name matches its scope
-    #- wrapcheck # checks that errors returned from external packages are wrapped
-    #- zerologlint # detects the wrong usage of zerolog that a user forgets to dispatch zerolog.Event
+    - decorder # checks declaration order and count of types, constants, variables and functions
+#    - exhaustruct # [highly recommend to enable] checks if all structure fields are initialized
+    - ginkgolinter # [if you use ginkgo/gomega] enforces standards of using ginkgo and gomega
+    - godox # detects usage of FIXME, TODO and other keywords inside comments
+    - goheader # checks is file header matches to pattern
+    - inamedparam # [great idea, but too strict, need to ignore a lot of cases by default] reports interfaces with unnamed method parameters
+    - interfacebloat # checks the number of methods inside an interface
+    - ireturn # accept interfaces, return concrete types
+#    - prealloc # [premature optimization, but can be used in some cases] finds slice declarations that could potentially be preallocated
+    - tagalign # checks that struct tags are well aligned
+#    - varnamelen # [great idea, but too many false positives] checks that the length of a variable's name matches its scope
+#    - wrapcheck # checks that errors returned from external packages are wrapped
+    - zerologlint # detects the wrong usage of zerolog that a user forgets to dispatch zerolog.Event
 
     ## disabled
     #- containedctx # detects struct contained context.Context field
