@@ -53,8 +53,6 @@ go test ./...
 ## Coming soon
 
 - [ ] Improved readme usage docs
-- [ ] A way to navigate back to the first page
-- [ ] A list of recent projects on the first page
 - [ ] Customizable styling
 - [ ] Export diagram as SVG / PNG / drawio file
 - [ ] Each package in the graph having its public interface displayed in some sort of collapsible list
