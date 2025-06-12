@@ -141,11 +141,11 @@
         </div>
 
         <!-- Pan/Zoom Controls -->
-        <div class="zoom-controls select-none">
-            <div class="zoom-btn" onclick="zoomIn()">+</div>
-            <div class="zoom-btn" onclick="zoomOut()">-</div>
-            <div class="zoom-btn" onclick="fitAndCenter()" title="Fit and center graph">•</div>
-        </div>
+        <button id="closeBtn" onclick="window.location.href='../index.html'" title="Close and return to home"
+            style="position: fixed; top: 0; right: 0; z-index: 101; width: 40px; height: 40px; background: rgba(0,0,0,1); border: none; color: rgba(255,255,255,0.25); font-size: 22px; font-weight: bold; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: color 75ms ease;"
+            onmouseover="this.style.color='rgba(255,255,255,1)'" onmouseout="this.style.color='rgba(255,255,255,0.25)'">
+            &#10005;
+        </button>
     </div>
 
     <!-- URL Parameter Detection -->
@@ -652,7 +652,7 @@
         });
 
         function startPanAnimation() {
-            if (panAnimationId || !panZoomInstance) return;
+            if (panAnimationID || !panZoomInstance) return;
             
             function animatePan() {
                 // Get current zoom level and calculate zoom-adjusted speed
@@ -692,19 +692,19 @@
                 // Continue animation if any keys are still pressed
                 if (arrowKeysPressed.up || arrowKeysPressed.down || 
                     arrowKeysPressed.left || arrowKeysPressed.right) {
-                    panAnimationId = requestAnimationFrame(animatePan);
+                    panAnimationID = requestAnimationFrame(animatePan);
                 } else {
-                    panAnimationId = null;
+                    panAnimationID = null;
                 }
             }
             
-            panAnimationId = requestAnimationFrame(animatePan);
+            panAnimationID = requestAnimationFrame(animatePan);
         }
 
         function stopPanAnimation() {
             if (panAnimationID) {
                 cancelAnimationFrame(panAnimationID);
-                panAnimationId = null;
+                panAnimationID = null;
             }
         }
 
