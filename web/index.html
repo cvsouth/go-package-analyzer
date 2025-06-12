@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Go Package Analyzer</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,100..800;1,100..800&display=swap" rel="stylesheet">
+    <style>
+        * {
+            font-family: 'JetBrains Mono', monospace !important;
+        }
+    </style>
+</head>
+<body class="m-0 p-10 h-screen bg-black text-white flex justify-center items-center flex-col">
+    <div class="text-center flex flex-col items-center w-full max-w-[600px]">
+        <input id="repoInput" type="text" placeholder="Path to Go repository root e.g. /path/to/project" 
+               class="px-5 py-3 text-base border-none bg-white/10 text-white w-full mb-5 focus:outline-none rounded-none" 
+               oninput="saveInputValue()" />
+        <button onclick="navigateToGraph()" class="px-5 font-medium py-1.5 text-base bg-white text-black border-none cursor-pointer transition-colors hover:bg-gray-200 rounded-none">
+            Analyze Repository
+        </button>
+    </div>
+    <script>
+        // Load saved value when page loads
+        window.addEventListener('load', function() {
+            const savedValue = localStorage.getItem('repoPath');
+            if (savedValue) {
+                document.getElementById('repoInput').value = savedValue;
+            }
+        });
+
+        // Save input value to localStorage when changed
+        function saveInputValue() {
+            const input = document.getElementById('repoInput');
+            localStorage.setItem('repoPath', input.value);
+        }
+
+        function navigateToGraph() {
+            const input = document.getElementById('repoInput');
+            const repoValue = input.value.trim();
+            window.location.href = repoValue ? `/graph?repo=${encodeURIComponent(repoValue)}` : '/graph';
+        }
+    </script>
+</body>
+</html>
