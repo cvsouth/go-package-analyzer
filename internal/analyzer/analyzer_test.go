@@ -1084,3 +1084,161 @@ func main() {
 		})
 	}
 }
+
+// TestAnalyzeMultipleEntryPoints_Monorepo tests analysis of multiple entry points in a monorepo structure.
+func TestAnalyzeMultipleEntryPoints_Monorepo(t *testing.T) { //nolint:gocognit
+	tmpDir := t.TempDir()
+
+	// Create a monorepo structure with multiple subprojects
+	// Each subproject has its own go.mod and dependencies
+
+	// Subproject A: service-a
+	serviceADir := filepath.Join(tmpDir, "service-a")
+	if err := os.MkdirAll(serviceADir, 0755); err != nil {
+		t.Fatalf("Failed to create service-a directory: %v", err)
+	}
+
+	// Create go.mod for service-a
+	goModAContent := "module github.com/test/service-a\n\ngo 1.21\n"
+	if err := os.WriteFile(filepath.Join(serviceADir, "go.mod"), []byte(goModAContent), 0644); err != nil {
+		t.Fatalf("Failed to create go.mod for service-a: %v", err)
+	}
+
+	// Create internal/handler package in service-a
+	handlerADir := filepath.Join(serviceADir, "internal", "handler")
+	if err := os.MkdirAll(handlerADir, 0755); err != nil {
+		t.Fatalf("Failed to create internal/handler directory for service-a: %v", err)
+	}
+
+	handlerAContent := `package handler
+
+import "github.com/test/service-a/internal/service"
+
+func HandleRequest() {
+	service.ProcessRequest()
+}
+`
+	if err := os.WriteFile(filepath.Join(handlerADir, "handler.go"), []byte(handlerAContent), 0644); err != nil {
+		t.Fatalf("Failed to create handler.go for service-a: %v", err)
+	}
+
+	// Create internal/service package in service-a
+	serviceAServiceDir := filepath.Join(serviceADir, "internal", "service")
+	if err := os.MkdirAll(serviceAServiceDir, 0755); err != nil {
+		t.Fatalf("Failed to create internal/service directory for service-a: %v", err)
+	}
+
+	serviceAContent := `package service
+
+func ProcessRequest() {
+	// Business logic
+}
+`
+	if err := os.WriteFile(filepath.Join(serviceAServiceDir, "service.go"), []byte(serviceAContent), 0644); err != nil {
+		t.Fatalf("Failed to create service.go for service-a: %v", err)
+	}
+
+	// Create main.go for service-a
+	mainAContent := `package main
+
+import "github.com/test/service-a/internal/handler"
+
+func main() {
+	handler.HandleRequest()
+}
+`
+	if err := os.WriteFile(filepath.Join(serviceADir, "main.go"), []byte(mainAContent), 0644); err != nil {
+		t.Fatalf("Failed to create main.go for service-a: %v", err)
+	}
+
+	// Subproject B: service-b
+	serviceBDir := filepath.Join(tmpDir, "service-b")
+	if err := os.MkdirAll(serviceBDir, 0755); err != nil {
+		t.Fatalf("Failed to create service-b directory: %v", err)
+	}
+
+	// Create go.mod for service-b
+	goModBContent := "module github.com/test/service-b\n\ngo 1.21\n"
+	if err := os.WriteFile(filepath.Join(serviceBDir, "go.mod"), []byte(goModBContent), 0644); err != nil {
+		t.Fatalf("Failed to create go.mod for service-b: %v", err)
+	}
+
+	// Create utils package in service-b
+	utilsBDir := filepath.Join(serviceBDir, "utils")
+	if err := os.MkdirAll(utilsBDir, 0755); err != nil {
+		t.Fatalf("Failed to create utils directory for service-b: %v", err)
+	}
+
+	utilsBContent := `package utils
+
+func FormatData() string {
+	return "formatted"
+}
+`
+	if err := os.WriteFile(filepath.Join(utilsBDir, "utils.go"), []byte(utilsBContent), 0644); err != nil {
+		t.Fatalf("Failed to create utils.go for service-b: %v", err)
+	}
+
+	// Create main.go for service-b
+	mainBContent := `package main
+
+import "github.com/test/service-b/utils"
+
+func main() {
+	utils.FormatData()
+}
+`
+	if err := os.WriteFile(filepath.Join(serviceBDir, "main.go"), []byte(mainBContent), 0644); err != nil {
+		t.Fatalf("Failed to create main.go for service-b: %v", err)
+	}
+
+	// Test: Analyze multiple entry points in the monorepo
+	a := analyzer.New()
+	result, err := a.AnalyzeMultipleEntryPoints(tmpDir, true, nil)
+
+	if err != nil {
+		t.Fatalf("AnalyzeMultipleEntryPoints failed: %v", err)
+	}
+
+	if !result.Success {
+		t.Fatalf("Analysis failed: %s", result.Error)
+	}
+
+	// Should find 2 entry points
+	if len(result.EntryPoints) != 2 {
+		t.Fatalf("Expected 2 entry points, got %d", len(result.EntryPoints))
+	}
+
+	// Verify each entry point has its correct module and dependencies
+	entryPointsByModule := make(map[string]*analyzer.EntryPoint)
+	for i := range result.EntryPoints {
+		ep := &result.EntryPoints[i]
+		if ep.Graph != nil {
+			entryPointsByModule[ep.Graph.ModuleName] = ep
+		}
+	}
+
+	// Check service-a
+	serviceA := entryPointsByModule["github.com/test/service-a"]
+	if serviceA == nil {
+		t.Fatal("service-a entry point not found or has no graph")
+	}
+
+	// service-a should have 3 packages: main, internal/handler, internal/service
+	if len(serviceA.Graph.Packages) != 3 {
+		t.Errorf("service-a should have 3 packages, got %d: %v",
+			len(serviceA.Graph.Packages), getPackageNames(serviceA.Graph.Packages))
+	}
+
+	// Check service-b
+	serviceB := entryPointsByModule["github.com/test/service-b"]
+	if serviceB == nil {
+		t.Fatal("service-b entry point not found or has no graph")
+	}
+
+	// service-b should have 2 packages: main, utils
+	if len(serviceB.Graph.Packages) != 2 {
+		t.Errorf("service-b should have 2 packages, got %d: %v",
+			len(serviceB.Graph.Packages), getPackageNames(serviceB.Graph.Packages))
+	}
+}

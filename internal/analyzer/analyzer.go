@@ -77,19 +77,17 @@ func (a *Analyzer) AnalyzeFromFile(
 ) (*DependencyGraph, error) {
 	a.excludeDirs = excludeDirs
 
-	// Only find module if not already set (for multi-entry point analysis)
-	if a.moduleRoot == "" || a.moduleName == "" {
-		// Find the module root and name (or use sensible defaults if no go.mod)
-		if err := a.findModule(entryFile); err != nil {
-			// If no go.mod found, use the directory containing the entry file as module root
-			entryDir := filepath.Dir(entryFile)
-			absEntryDir, absErr := filepath.Abs(entryDir)
-			if absErr != nil {
-				return nil, fmt.Errorf("resolving entry directory: %w", absErr)
-			}
-			a.moduleRoot = absEntryDir
-			a.moduleName = filepath.Base(absEntryDir)
+	// Always find the correct module for this specific entry file
+	// This ensures each entry point in a monorepo uses its correct module context
+	if err := a.findModule(entryFile); err != nil {
+		// If no go.mod found, use the directory containing the entry file as module root
+		entryDir := filepath.Dir(entryFile)
+		absEntryDir, absErr := filepath.Abs(entryDir)
+		if absErr != nil {
+			return nil, fmt.Errorf("resolving entry directory: %w", absErr)
 		}
+		a.moduleRoot = absEntryDir
+		a.moduleName = filepath.Base(absEntryDir)
 	}
 
 	// Parse the entry file to get its package
@@ -652,20 +650,13 @@ func (a *Analyzer) extractCycleFromPath(dep string, path []string, cycles *[][]s
 func (a *Analyzer) FindEntryPoints(repoRoot string) ([]string, error) {
 	var entryPoints []string
 
-	// Set the repository root as the module root
+	// Convert to absolute path for consistent path handling
 	absRepoRoot, err := filepath.Abs(repoRoot)
 	if err != nil {
 		return nil, fmt.Errorf("resolving repository root: %w", err)
 	}
-	a.moduleRoot = absRepoRoot
 
-	// Try to find the module name from go.mod, fallback to directory name
-	if moduleErr := a.findModule(absRepoRoot); moduleErr != nil {
-		// If no go.mod found, use the directory name as module name
-		a.moduleName = filepath.Base(absRepoRoot)
-	}
-
-	err = filepath.Walk(repoRoot, func(path string, _ os.FileInfo, err error) error {
+	err = filepath.Walk(absRepoRoot, func(path string, _ os.FileInfo, err error) error {
 		if err != nil {
 			return err
 		}
@@ -733,7 +724,7 @@ func (a *Analyzer) fileContainsMainFunction(filePath string) (bool, error) {
 }
 
 // AnalyzeMultipleEntryPoints finds and analyzes all entry points in a repository.
-func (a *Analyzer) AnalyzeMultipleEntryPoints(
+func (a *Analyzer) AnalyzeMultipleEntryPoints( //nolint:gocognit
 	repoRoot string,
 	excludeExternal bool,
 	excludeDirs []string,
@@ -816,10 +807,35 @@ func (a *Analyzer) AnalyzeMultipleEntryPoints(
 		}, nil
 	}
 
+	// Determine the appropriate module name for the result
+	// For single-module projects, use the module name
+	// For monorepos with multiple modules, use the repository name
+	var resultModuleName string
+	if len(entryPoints) > 0 {
+		firstModuleName := entryPoints[0].Graph.ModuleName
+		allSameModule := true
+		for _, ep := range entryPoints[1:] {
+			if ep.Graph.ModuleName != firstModuleName {
+				allSameModule = false
+				break
+			}
+		}
+
+		if allSameModule {
+			// All entry points belong to the same module
+			resultModuleName = firstModuleName
+		} else {
+			// Multiple modules detected (monorepo), use repository name
+			resultModuleName = filepath.Base(absRepoRoot)
+		}
+	} else {
+		resultModuleName = filepath.Base(absRepoRoot)
+	}
+
 	return &MultiEntryAnalysisResult{
 		Success:     true,
 		EntryPoints: entryPoints,
 		RepoRoot:    absRepoRoot,
-		ModuleName:  a.moduleName,
+		ModuleName:  resultModuleName,
 	}, nil
 }
