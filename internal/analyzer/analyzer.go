@@ -274,15 +274,83 @@ func (a *Analyzer) isExcludedPackage(pkgPath string) bool {
 	relPath := strings.TrimPrefix(pkgPath, a.moduleName)
 	relPath = strings.TrimPrefix(relPath, "/")
 
-	// Check if the relative path matches any excluded directory
-	for _, excludeDir := range a.excludeDirs {
-		// Exact match or subdirectory match
-		if relPath == excludeDir || strings.HasPrefix(relPath, excludeDir+"/") {
+	// Check if the relative path matches any excluded pattern
+	for _, excludePattern := range a.excludeDirs {
+		if a.matchesWildcardPattern(relPath, excludePattern) {
 			return true
 		}
 	}
 
 	return false
+}
+
+// matchesWildcardPattern checks if a path matches a wildcard pattern.
+// The pattern can contain * wildcards which match any sequence of characters.
+// If no wildcards are present, it performs exact matching.
+func (a *Analyzer) matchesWildcardPattern(path, pattern string) bool {
+	// Empty pattern matches nothing
+	if pattern == "" {
+		return false
+	}
+
+	// If pattern contains no wildcards, do exact match
+	if !strings.Contains(pattern, "*") {
+		return path == pattern
+	}
+
+	// Handle wildcard patterns
+	return a.wildcardMatch(path, pattern)
+}
+
+// wildcardMatch implements wildcard pattern matching where * matches any sequence of characters.
+func (a *Analyzer) wildcardMatch(text, pattern string) bool {
+	// Convert pattern to regexp-like matching logic
+	// Split pattern by * to get literal parts
+	parts := strings.Split(pattern, "*")
+
+	// Handle edge case: pattern is just "*"
+	if len(parts) == 2 && parts[0] == "" && parts[1] == "" {
+		return true // "*" matches everything
+	}
+
+	textIndex := 0
+
+	for i, part := range parts {
+		if part == "" {
+			// This is a wildcard segment (between two *), skip it
+			continue
+		}
+
+		// Find this part in the remaining text
+		index := strings.Index(text[textIndex:], part)
+		if index == -1 {
+			return false // Part not found
+		}
+
+		// Adjust the actual index in the full text
+		index += textIndex
+
+		// Special handling for first and last parts
+		if i == 0 {
+			// First part must match at the beginning (unless preceded by *)
+			if index != 0 && pattern[0] != '*' {
+				return false
+			}
+		}
+
+		if i == len(parts)-1 {
+			// Last part must match at the end (unless followed by *)
+			expectedEnd := index + len(part)
+			if expectedEnd != len(text) && !strings.HasSuffix(pattern, "*") {
+				return false
+			}
+		}
+
+		// Move text index past this match
+		textIndex = index + len(part)
+	}
+
+	return true
 }
 
 // getPackageDir converts a package path to a directory path.

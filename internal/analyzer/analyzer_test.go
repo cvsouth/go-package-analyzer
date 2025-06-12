@@ -1,6 +1,7 @@
 package analyzer_test
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -288,20 +289,28 @@ func TestAnalyzeFromFile_WithExclusions(t *testing.T) {
 	// Create main.go
 	mainContent := `package main
 
-import "test/project/util"
+import "test/project/internal/excluded"
 
 func main() {
-	util.Help()
+	excluded.Help()
 }`
 	mainPath := filepath.Join(tmpDir, "main.go")
 	if err := os.WriteFile(mainPath, []byte(mainContent), 0644); err != nil {
 		t.Fatalf("Failed to create main.go: %v", err)
 	}
 
-	// Create util.go in excluded directory
-	utilDir := filepath.Join(tmpDir, "internal", "excluded")
-	if err := os.MkdirAll(utilDir, 0755); err != nil {
-		t.Fatalf("Failed to create util directory: %v", err)
+	// Create excluded.go in excluded directory
+	excludedDir := filepath.Join(tmpDir, "internal", "excluded")
+	if err := os.MkdirAll(excludedDir, 0755); err != nil {
+		t.Fatalf("Failed to create excluded directory: %v", err)
+	}
+
+	excludedContent := `package excluded
+
+func Help() {}`
+	excludedPath := filepath.Join(excludedDir, "excluded.go")
+	if err := os.WriteFile(excludedPath, []byte(excludedContent), 0644); err != nil {
+		t.Fatalf("Failed to create excluded.go: %v", err)
 	}
 
 	a := analyzer.New()
@@ -312,9 +321,9 @@ func main() {
 		t.Fatalf("AnalyzeFromFile failed: %v", err)
 	}
 
-	// Should not include util package
-	if _, exists := graph.Packages["testing/data/simple_project/util"]; exists {
-		t.Error("Expected util package to be excluded")
+	// Should not include excluded package (exact match)
+	if _, exists := graph.Packages["test/project/internal/excluded"]; exists {
+		t.Error("Expected 'test/project/internal/excluded' package to be excluded")
 	}
 }
 
@@ -596,12 +605,14 @@ import (
 	"test/project/vendor/pkg"
 	"test/project/internal/test"
 	"test/project/utils"
+	"test/project/vendor"
 )
 
 func main() {
 	pkg.DoSomething()
 	test.RunTest()
 	utils.Helper()
+	vendor.DirectFunc()
 }`
 
 	mainPath := filepath.Join(tmpDir, "main.go")
@@ -612,6 +623,7 @@ func main() {
 	// Create packages to be excluded and included
 	packages := map[string]string{
 		"vendor/pkg":    "package pkg\nfunc DoSomething() {}",
+		"vendor":        "package vendor\nfunc DirectFunc() {}",
 		"internal/test": "package test\nfunc RunTest() {}",
 		"utils":         "package utils\nfunc Helper() {}",
 	}
@@ -636,22 +648,39 @@ func main() {
 		shouldExclude []string
 	}{
 		{
-			name:          "no exclusions",
-			excludeDirs:   nil,
-			shouldInclude: []string{"test/project/vendor/pkg", "test/project/internal/test", "test/project/utils"},
+			name:        "no exclusions",
+			excludeDirs: nil,
+			shouldInclude: []string{
+				"test/project/vendor/pkg",
+				"test/project/vendor",
+				"test/project/internal/test",
+				"test/project/utils",
+			},
 			shouldExclude: []string{},
 		},
 		{
-			name:          "exclude vendor",
-			excludeDirs:   []string{"vendor"},
+			name:          "exclude with wildcard - all vendor",
+			excludeDirs:   []string{"vendor*"},
 			shouldInclude: []string{"test/project/internal/test", "test/project/utils"},
+			shouldExclude: []string{"test/project/vendor/pkg", "test/project/vendor"},
+		},
+		{
+			name:          "exclude specific directory only",
+			excludeDirs:   []string{"vendor"},
+			shouldInclude: []string{"test/project/vendor/pkg", "test/project/internal/test", "test/project/utils"},
+			shouldExclude: []string{"test/project/vendor"},
+		},
+		{
+			name:          "exclude subdirectories with wildcard",
+			excludeDirs:   []string{"vendor/*"},
+			shouldInclude: []string{"test/project/vendor", "test/project/internal/test", "test/project/utils"},
 			shouldExclude: []string{"test/project/vendor/pkg"},
 		},
 		{
-			name:          "exclude multiple",
-			excludeDirs:   []string{"vendor", "internal/test"},
+			name:          "exclude multiple patterns",
+			excludeDirs:   []string{"vendor*", "internal/test"},
 			shouldInclude: []string{"test/project/utils"},
-			shouldExclude: []string{"test/project/vendor/pkg", "test/project/internal/test"},
+			shouldExclude: []string{"test/project/vendor/pkg", "test/project/vendor", "test/project/internal/test"},
 		},
 	}
 
@@ -659,6 +688,156 @@ func main() {
 		t.Run(tc.name, func(t *testing.T) {
 			analyzer := analyzer.New()
 			graph, err := analyzer.AnalyzeFromFile(mainPath, true, tc.excludeDirs)
+			if err != nil {
+				t.Fatalf("AnalyzeFromFile failed: %v", err)
+			}
+
+			// Check included packages
+			for _, pkgPath := range tc.shouldInclude {
+				if _, exists := graph.Packages[pkgPath]; !exists {
+					t.Errorf("Expected package '%s' to be included but it was not found", pkgPath)
+				}
+			}
+
+			// Check excluded packages
+			for _, pkgPath := range tc.shouldExclude {
+				if _, exists := graph.Packages[pkgPath]; exists {
+					t.Errorf("Expected package '%s' to be excluded but it was found", pkgPath)
+				}
+			}
+		})
+	}
+}
+
+// TestAnalyzeFromFile_WildcardExclusion tests comprehensive wildcard pattern matching.
+func TestAnalyzeFromFile_WildcardExclusion(t *testing.T) { //nolint:gocognit
+	tmpDir := t.TempDir()
+
+	// Create go.mod
+	goModContent := "module test/wildcards\n\ngo 1.21\n"
+	goModPath := filepath.Join(tmpDir, "go.mod")
+	if err := os.WriteFile(goModPath, []byte(goModContent), 0644); err != nil {
+		t.Fatalf("Failed to create go.mod: %v", err)
+	}
+
+	// Create main package that imports various test packages
+	mainContent := `package main
+
+import (
+	"test/wildcards/internal/auth"
+	"test/wildcards/internal/db"
+	"test/wildcards/pkg/utils"
+	"test/wildcards/pkg/helpers"
+	"test/wildcards/vendor/lib1"
+	"test/wildcards/vendor/lib2"
+	"test/wildcards/shared"
+	"test/wildcards/test/unit"
+	"test/wildcards/test/integration"
+)
+
+func main() {
+	auth.Login()
+	db.Connect()
+	utils.DoWork()
+	helpers.Assist()
+	lib1.External()
+	lib2.Other()
+	shared.Common()
+	unit.TestFunc()
+	integration.IntegrationTest()
+}`
+
+	mainPath := filepath.Join(tmpDir, "main.go")
+	if err := os.WriteFile(mainPath, []byte(mainContent), 0644); err != nil {
+		t.Fatalf("Failed to create main.go: %v", err)
+	}
+
+	// Create all packages
+	packages := []string{
+		"internal/auth",
+		"internal/db",
+		"pkg/utils",
+		"pkg/helpers",
+		"vendor/lib1",
+		"vendor/lib2",
+		"shared",
+		"test/unit",
+		"test/integration",
+	}
+
+	for _, pkgPath := range packages {
+		pkgDir := filepath.Join(tmpDir, pkgPath)
+		if err := os.MkdirAll(pkgDir, 0755); err != nil {
+			t.Fatalf("Failed to create package directory %s: %v", pkgPath, err)
+		}
+
+		fileName := filepath.Base(pkgPath) + ".go"
+		pkgName := filepath.Base(pkgPath)
+		content := fmt.Sprintf("package %s\nfunc SomeFunc() {}", pkgName)
+		filePath := filepath.Join(pkgDir, fileName)
+		if err := os.WriteFile(filePath, []byte(content), 0644); err != nil {
+			t.Fatalf("Failed to create package file %s: %v", filePath, err)
+		}
+	}
+
+	testCases := []struct {
+		name           string
+		excludePattern string
+		shouldInclude  []string
+		shouldExclude  []string
+	}{
+		{
+			name:           "wildcard at end - internal/*",
+			excludePattern: "internal/*",
+			shouldInclude:  []string{"test/wildcards/pkg/utils", "test/wildcards/shared"},
+			shouldExclude:  []string{"test/wildcards/internal/auth", "test/wildcards/internal/db"},
+		},
+		{
+			name:           "wildcard at beginning - */utils",
+			excludePattern: "*/utils",
+			shouldInclude:  []string{"test/wildcards/internal/auth", "test/wildcards/pkg/helpers"},
+			shouldExclude:  []string{"test/wildcards/pkg/utils"},
+		},
+		{
+			name:           "wildcard in middle - test/*/unit",
+			excludePattern: "test/*/unit",
+			shouldInclude:  []string{"test/wildcards/test/integration", "test/wildcards/pkg/utils"},
+			shouldExclude:  []string{}, // no exact match for this pattern
+		},
+		{
+			name:           "multiple wildcards - */test/*",
+			excludePattern: "*/test/*",
+			shouldInclude:  []string{"test/wildcards/internal/auth", "test/wildcards/shared"},
+			shouldExclude:  []string{}, // no exact match for this pattern in our test structure
+		},
+		{
+			name:           "exact match without wildcards - shared",
+			excludePattern: "shared",
+			shouldInclude:  []string{"test/wildcards/internal/auth", "test/wildcards/pkg/utils"},
+			shouldExclude:  []string{"test/wildcards/shared"},
+		},
+		{
+			name:           "no match pattern - nonexistent/*",
+			excludePattern: "nonexistent/*",
+			shouldInclude:  []string{"test/wildcards/internal/auth", "test/wildcards/shared"},
+			shouldExclude:  []string{},
+		},
+		{
+			name:           "single wildcard matches all - *",
+			excludePattern: "*",
+			shouldInclude:  []string{},
+			shouldExclude: []string{
+				"test/wildcards/internal/auth",
+				"test/wildcards/pkg/utils",
+				"test/wildcards/shared",
+			},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			analyzer := analyzer.New()
+			graph, err := analyzer.AnalyzeFromFile(mainPath, true, []string{tc.excludePattern})
 			if err != nil {
 				t.Fatalf("AnalyzeFromFile failed: %v", err)
 			}
@@ -775,5 +954,133 @@ func Helper() {}`,
 	// Basic layer ordering validation - packages with more dependencies tend to be in higher layers
 	if utilLayer < 0 || middlewareLayer < 0 || mainLayer < 0 {
 		t.Error("Not all packages were assigned to layers")
+	}
+}
+
+// TestAnalyzeFromFile_WildcardEdgeCases tests edge cases for wildcard pattern matching.
+func TestAnalyzeFromFile_WildcardEdgeCases(t *testing.T) { //nolint:gocognit
+	tmpDir := t.TempDir()
+
+	// Create go.mod
+	goModContent := "module test/edge\n\ngo 1.21\n"
+	goModPath := filepath.Join(tmpDir, "go.mod")
+	if err := os.WriteFile(goModPath, []byte(goModContent), 0644); err != nil {
+		t.Fatalf("Failed to create go.mod: %v", err)
+	}
+
+	// Create main package that imports various packages
+	mainContent := `package main
+
+import (
+	"test/edge/a"
+	"test/edge/ab"
+	"test/edge/abc"
+	"test/edge/test"
+	"test/edge/testing"
+	"test/edge/empty"
+)
+
+func main() {
+	a.F()
+	ab.F()
+	abc.F()
+	test.F()
+	testing.F()
+	empty.F()
+}`
+
+	mainPath := filepath.Join(tmpDir, "main.go")
+	if err := os.WriteFile(mainPath, []byte(mainContent), 0644); err != nil {
+		t.Fatalf("Failed to create main.go: %v", err)
+	}
+
+	// Create all packages
+	packages := []string{"a", "ab", "abc", "test", "testing", "empty"}
+
+	for _, pkgPath := range packages {
+		pkgDir := filepath.Join(tmpDir, pkgPath)
+		if err := os.MkdirAll(pkgDir, 0755); err != nil {
+			t.Fatalf("Failed to create package directory %s: %v", pkgPath, err)
+		}
+
+		content := fmt.Sprintf("package %s\nfunc F() {}", pkgPath)
+		filePath := filepath.Join(pkgDir, pkgPath+".go")
+		if err := os.WriteFile(filePath, []byte(content), 0644); err != nil {
+			t.Fatalf("Failed to create package file %s: %v", filePath, err)
+		}
+	}
+
+	testCases := []struct {
+		name           string
+		excludePattern string
+		shouldInclude  []string
+		shouldExclude  []string
+	}{
+		{
+			name:           "empty pattern matches nothing",
+			excludePattern: "",
+			shouldInclude:  []string{"test/edge/a", "test/edge/ab", "test/edge/abc"},
+			shouldExclude:  []string{},
+		},
+		{
+			name:           "pattern with multiple consecutive wildcards - a**b",
+			excludePattern: "a**b",
+			shouldInclude:  []string{"test/edge/a", "test/edge/abc", "test/edge/test"},
+			shouldExclude:  []string{"test/edge/ab"},
+		},
+		{
+			name:           "pattern starting and ending with wildcard - *test*",
+			excludePattern: "*test*",
+			shouldInclude:  []string{"test/edge/a", "test/edge/ab", "test/edge/abc", "test/edge/empty"},
+			shouldExclude:  []string{"test/edge/test", "test/edge/testing"},
+		},
+		{
+			name:           "pattern that should match partial names - *est",
+			excludePattern: "*est",
+			shouldInclude: []string{
+				"test/edge/a",
+				"test/edge/ab",
+				"test/edge/abc",
+				"test/edge/testing",
+				"test/edge/empty",
+			},
+			shouldExclude: []string{"test/edge/test"},
+		},
+		{
+			name:           "pattern with no match - xyz*",
+			excludePattern: "xyz*",
+			shouldInclude:  []string{"test/edge/a", "test/edge/test", "test/edge/empty"},
+			shouldExclude:  []string{},
+		},
+		{
+			name:           "pattern matching single character - ?",
+			excludePattern: "?", // Should not match anything since we don't support ? wildcard
+			shouldInclude:  []string{"test/edge/a", "test/edge/test", "test/edge/empty"},
+			shouldExclude:  []string{},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			analyzer := analyzer.New()
+			graph, err := analyzer.AnalyzeFromFile(mainPath, true, []string{tc.excludePattern})
+			if err != nil {
+				t.Fatalf("AnalyzeFromFile failed: %v", err)
+			}
+
+			// Check included packages
+			for _, pkgPath := range tc.shouldInclude {
+				if _, exists := graph.Packages[pkgPath]; !exists {
+					t.Errorf("Expected package '%s' to be included but it was not found", pkgPath)
+				}
+			}
+
+			// Check excluded packages
+			for _, pkgPath := range tc.shouldExclude {
+				if _, exists := graph.Packages[pkgPath]; exists {
+					t.Errorf("Expected package '%s' to be excluded but it was found", pkgPath)
+				}
+			}
+		})
 	}
 }
