@@ -1,4 +1,4 @@
-module cvsouth/go-package-analyzer
+module github.com/cvsouth/go-package-analyzer
 
 go 1.24
 

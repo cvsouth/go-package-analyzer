@@ -16,9 +16,9 @@ import (
 	"syscall"
 	"time"
 
-	"cvsouth/go-package-analyzer/internal/analyzer"
-	"cvsouth/go-package-analyzer/internal/scanner"
-	"cvsouth/go-package-analyzer/internal/visualizer"
+	"github.com/cvsouth/go-package-analyzer/internal/analyzer"
+	"github.com/cvsouth/go-package-analyzer/internal/scanner"
+	"github.com/cvsouth/go-package-analyzer/internal/visualizer"
 )
 
 // Server timeout constants.
