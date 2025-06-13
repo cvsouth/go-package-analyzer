@@ -130,7 +130,7 @@ func TestAnalyzeFromFile_ExcludeExternal(t *testing.T) {
 }
 
 func TestAnalyzeFromFile_MultipleDependencies(t *testing.T) {
-	testDataPath, err := filepath.Abs("../../testing/data/simple_project")
+	testDataPath, err := filepath.Abs(filepath.Join("..", "..", "testing", "data", "simple_project"))
 	if err != nil {
 		t.Fatalf("Failed to get absolute path: %v", err)
 	}
@@ -150,9 +150,9 @@ func TestAnalyzeFromFile_MultipleDependencies(t *testing.T) {
 
 	// Should have main package, app package, and util package
 	expectedPackages := []string{
-		"testing/data/simple_project/cmd",
-		"testing/data/simple_project/app",
-		"testing/data/simple_project/util",
+		filepath.ToSlash(filepath.Join("testing", "data", "simple_project", "cmd")),
+		filepath.ToSlash(filepath.Join("testing", "data", "simple_project", "app")),
+		filepath.ToSlash(filepath.Join("testing", "data", "simple_project", "util")),
 	}
 
 	for _, expectedPkg := range expectedPackages {
@@ -162,14 +162,14 @@ func TestAnalyzeFromFile_MultipleDependencies(t *testing.T) {
 	}
 
 	// Check dependencies
-	cmdPkg := graph.Packages["testing/data/simple_project/cmd"]
+	cmdPkg := graph.Packages[filepath.ToSlash(filepath.Join("testing", "data", "simple_project", "cmd"))]
 	if cmdPkg == nil {
 		t.Fatal("cmd package not found")
 	}
 
 	expectedDeps := []string{
-		"testing/data/simple_project/app",
-		"testing/data/simple_project/util",
+		filepath.ToSlash(filepath.Join("testing", "data", "simple_project", "app")),
+		filepath.ToSlash(filepath.Join("testing", "data", "simple_project", "util")),
 	}
 
 	for _, expectedDep := range expectedDeps {
@@ -778,7 +778,7 @@ func createNestedPackage(t *testing.T, baseDir, pkgPath, content string) string 
 	err := os.MkdirAll(fullPkgDir, 0755)
 	require.NoError(t, err, "Failed to create package directory")
 
-	fileName := fmt.Sprintf("%s.go", filepath.Base(pkgPath))
+	fileName := filepath.Base(pkgPath) + ".go"
 	filePath := filepath.Join(fullPkgDir, fileName)
 	createGoFile(t, filePath, content)
 	return filePath
@@ -803,7 +803,8 @@ func setupNestedPackageProject(t *testing.T, tmpDir, moduleName string) string {
 
 	handlerContent := `package handler
 func Handle() {}`
-	return createNestedPackage(t, tmpDir, "internal/handler", handlerContent)
+	handlerPath := createNestedPackage(t, tmpDir, filepath.Join("internal", "handler"), handlerContent)
+	return handlerPath
 }
 
 // setupProjectWithoutGoMod creates a project with only main.go (no go.mod).

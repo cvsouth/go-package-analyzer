@@ -168,11 +168,14 @@ func (a *Analyzer) getPackageFromFile(filePath string) (string, error) {
 		return "", err
 	}
 
+	// Normalize path separators to forward slashes for package paths
+	relPath = filepath.ToSlash(relPath)
+
 	if relPath == "." {
 		return a.moduleName, nil
 	}
 
-	return filepath.Join(a.moduleName, relPath), nil
+	return filepath.ToSlash(filepath.Join(a.moduleName, relPath)), nil
 }
 
 // analyzePackage recursively analyzes a package and its dependencies.
@@ -357,15 +360,18 @@ func (a *Analyzer) getPackageDir(pkgPath string) (string, error) {
 		return "", fmt.Errorf("external package: %s", pkgPath)
 	}
 
-	// Remove module name prefix
+	// Remove module name prefix and normalize path separators
 	relPath := strings.TrimPrefix(pkgPath, a.moduleName)
 	relPath = strings.TrimPrefix(relPath, "/")
+	relPath = strings.TrimPrefix(relPath, "\\")
+	relPath = filepath.ToSlash(relPath)
 
 	if relPath == "" {
 		return a.moduleRoot, nil
 	}
 
-	return filepath.Join(a.moduleRoot, relPath), nil
+	// Convert back to OS-specific path separators for file system operations
+	return filepath.FromSlash(filepath.Join(a.moduleRoot, relPath)), nil
 }
 
 // parsePackageImports parses all Go files in a directory to extract imports and count files.

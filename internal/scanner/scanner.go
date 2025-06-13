@@ -376,32 +376,39 @@ func getUnixRoots() []string {
 	return roots
 }
 
-// shouldExcludeDirectory determines if a directory should be excluded from listing.
+// shouldExcludeDirectory checks if a directory should be excluded from scanning.
 func shouldExcludeDirectory(fullPath, dirName string) bool {
-	// System directories to exclude (cross-platform)
+	// Check system directories
+	if isSystemDirectory(dirName) {
+		return true
+	}
+
+	// Check Go-specific directories
+	if isGoSpecificDirectory(dirName) {
+		return true
+	}
+
+	// Check Go module paths
+	if isGoModulePath(fullPath) {
+		return true
+	}
+
+	// Check development tools in specific locations
+	if isDevToolInSpecificLocation(fullPath, dirName) {
+		return true
+	}
+
+	// Check OS-specific exclusions
+	return shouldExcludeOSDirectory(fullPath, dirName)
+}
+
+// isSystemDirectory checks if a directory is a system directory.
+func isSystemDirectory(dirName string) bool {
 	systemDirs := []string{
-		"node_modules",
-		".git",
-		".svn",
-		".hg",
-		"vendor",
-		"bin",
-		"obj",
-		"tmp",
-		"temp",
-		"cache",
-		".cache",
-		"log",
-		"logs",
-		".logs",
-		"dist",
-		"build",
-		"target",
-		".idea",
-		".vscode",
-		".vs",
-		"__pycache__",
-		".pytest_cache",
+		"node_modules", ".git", ".svn", ".hg", "vendor",
+		"bin", "obj", "tmp", "temp", "cache", ".cache",
+		"log", "logs", ".logs", "dist", "build", "target",
+		".idea", ".vscode", ".vs", "__pycache__", ".pytest_cache",
 		".DS_Store",
 	}
 
@@ -410,10 +417,13 @@ func shouldExcludeDirectory(fullPath, dirName string) bool {
 			return true
 		}
 	}
+	return false
+}
 
-	// Go-specific directories to exclude (dependency caches, not user projects)
+// isGoSpecificDirectory checks if a directory is a Go-specific directory.
+func isGoSpecificDirectory(dirName string) bool {
 	goDirs := []string{
-		"pkg",      // Go module cache (pkg/mod contains downloaded dependencies)
+		"pkg",      // Go module cache
 		"mod",      // Module cache subdirectory
 		"sum",      // Module checksum cache
 		"modcache", // Alternative module cache location
@@ -425,53 +435,56 @@ func shouldExcludeDirectory(fullPath, dirName string) bool {
 			return true
 		}
 	}
+	return false
+}
 
-	// Special handling for Go module paths - exclude anything under pkg/mod
-	if strings.Contains(fullPath, "/pkg/mod/") || strings.Contains(fullPath, "\\pkg\\mod\\") {
-		return true
-	}
+// isGoModulePath checks if a path is a Go module path.
+func isGoModulePath(fullPath string) bool {
+	return strings.Contains(fullPath, "/pkg/mod/") || strings.Contains(fullPath, "\\pkg\\mod\\")
+}
 
-	// Development tools and applications to exclude
+// isDevToolInSpecificLocation checks if a directory is a development tool in a specific location.
+func isDevToolInSpecificLocation(fullPath, dirName string) bool {
 	devToolDirs := []string{
-		"Code",
-		"Code - Insiders",
-		"Visual Studio Code",
-		"code-server",
-		"google-chrome",
-		"chrome",
-		"chromium",
-		"firefox",
-		"mozilla",
-		"brave",
-		"edge",
-		"opera",
-		"discord",
-		"slack",
-		"teams",
-		"zoom",
-		"docker",
-		"docker-desktop",
-		"virtualbox",
-		"vmware",
-		"parallels",
-		"spotify",
-		"steam",
-		"android-studio",
-		"intellij",
-		"pycharm",
-		"webstorm",
-		"goland",
-		"cursor",
-		"Cursor",
+		"Code", "Code - Insiders", "Visual Studio Code", "code-server",
+		"google-chrome", "chrome", "chromium", "firefox", "mozilla",
+		"brave", "edge", "opera", "discord", "slack", "teams", "zoom",
+		"docker", "docker-desktop", "virtualbox", "vmware", "parallels",
+		"spotify", "steam", "android-studio", "intellij", "pycharm",
+		"webstorm", "goland", "cursor", "Cursor",
 	}
 
 	for _, toolDir := range devToolDirs {
 		if strings.EqualFold(dirName, toolDir) {
-			return true
+			// Check if this is a development tool directory in a specific location
+			switch runtime.GOOS {
+			case osWindows:
+				return isWindowsDevToolLocation(fullPath)
+			case osLinux, osDarwin:
+				return isUnixDevToolLocation(fullPath)
+			}
 		}
 	}
+	return false
+}
 
-	// OS-specific exclusions
+// isWindowsDevToolLocation checks if a path is a Windows development tool location.
+func isWindowsDevToolLocation(fullPath string) bool {
+	return strings.Contains(fullPath, "\\Program Files\\") ||
+		strings.Contains(fullPath, "\\Program Files (x86)\\") ||
+		strings.Contains(fullPath, "\\AppData\\") ||
+		strings.Contains(fullPath, "\\Local Settings\\")
+}
+
+// isUnixDevToolLocation checks if a path is a Unix development tool location.
+func isUnixDevToolLocation(fullPath string) bool {
+	return strings.HasPrefix(fullPath, "/usr/") ||
+		strings.HasPrefix(fullPath, "/opt/") ||
+		strings.Contains(fullPath, "/.config/")
+}
+
+// shouldExcludeOSDirectory checks OS-specific directory exclusions.
+func shouldExcludeOSDirectory(fullPath, dirName string) bool {
 	switch runtime.GOOS {
 	case osLinux:
 		return shouldExcludeLinuxDirectory(fullPath, dirName)
@@ -480,7 +493,6 @@ func shouldExcludeDirectory(fullPath, dirName string) bool {
 	case osDarwin:
 		return shouldExcludeMacDirectory(fullPath, dirName)
 	}
-
 	return false
 }
 
