@@ -433,13 +433,13 @@ func (a *Analyzer) getPackageName(pkgPath string) string {
 	return parts[len(parts)-1]
 }
 
-// calculateLayers assigns packages to layers based on their dependencies.
-func (a *Analyzer) calculateLayers(graph *DependencyGraph) { //nolint:gocognit
-	// First, detect circular dependencies to exclude them from layer calculation
-	circularEdges := a.detectCircularDependencies(graph)
-
-	// Build reverse dependency map to understand what depends on each package
+// buildReverseDependencyMap creates a map of what depends on each package.
+func (a *Analyzer) buildReverseDependencyMap(
+	graph *DependencyGraph,
+	circularEdges map[string]map[string]bool,
+) map[string][]string {
 	reverseDeps := make(map[string][]string)
+
 	for pkgPath, pkg := range graph.Packages {
 		for _, dep := range pkg.Dependencies {
 			if _, exists := graph.Packages[dep]; exists {
@@ -452,63 +452,45 @@ func (a *Analyzer) calculateLayers(graph *DependencyGraph) { //nolint:gocognit
 		}
 	}
 
-	// Calculate layers using iterative reverse topological sort
-	// This ensures packages are positioned optimally relative to their dependents
-	layers := make(map[string]int)
+	return reverseDeps
+}
 
-	// Initialize all packages to unassigned (-1)
+// initializeLayerMap initializes all packages to unassigned layer (-1).
+func initializeLayerMap(graph *DependencyGraph) map[string]int {
+	layers := make(map[string]int)
 	for pkgPath := range graph.Packages {
 		layers[pkgPath] = -1
 	}
+	return layers
+}
 
-	// Use multiple passes to ensure convergence
-	maxIterations := len(graph.Packages) + maxIterationsPadding
-	for range maxIterations {
-		changed := false
+// iterateLayerCalculation performs one iteration of layer calculation.
+func (a *Analyzer) iterateLayerCalculation(
+	graph *DependencyGraph,
+	layers map[string]int,
+	reverseDeps map[string][]string,
+) bool {
+	changed := false
 
-		// Process all packages in deterministic order
-		var packagePaths []string
-		for pkgPath := range graph.Packages {
-			packagePaths = append(packagePaths, pkgPath)
-		}
-		sort.Strings(packagePaths)
+	// Process all packages in deterministic order
+	packagePaths := make([]string, 0, len(graph.Packages))
+	for pkgPath := range graph.Packages {
+		packagePaths = append(packagePaths, pkgPath)
+	}
+	sort.Strings(packagePaths)
 
-		for _, pkgPath := range packagePaths {
-			newLayer := a.calculateOptimalLayer(pkgPath, layers, reverseDeps, graph)
-			if layers[pkgPath] != newLayer {
-				layers[pkgPath] = newLayer
-				if pkg := graph.Packages[pkgPath]; pkg != nil {
-					pkg.Layer = newLayer
-				}
-				changed = true
+	for _, pkgPath := range packagePaths {
+		newLayer := a.calculateOptimalLayer(pkgPath, layers, reverseDeps, graph)
+		if layers[pkgPath] != newLayer {
+			layers[pkgPath] = newLayer
+			if pkg := graph.Packages[pkgPath]; pkg != nil {
+				pkg.Layer = newLayer
 			}
-		}
-
-		// If no changes occurred, we've converged
-		if !changed {
-			break
+			changed = true
 		}
 	}
 
-	// Organize packages by layer
-	maxLayer := 0
-	for _, layer := range layers {
-		if layer > maxLayer {
-			maxLayer = layer
-		}
-	}
-
-	graph.Layers = make([][]string, maxLayer+1)
-	for pkgPath, layer := range layers {
-		if graph.Packages[pkgPath] != nil {
-			graph.Layers[layer] = append(graph.Layers[layer], pkgPath)
-		}
-	}
-
-	// Sort packages within each layer for deterministic order
-	for i := range graph.Layers {
-		sort.Strings(graph.Layers[i])
-	}
+	return changed
 }
 
 // calculateOptimalLayer calculates the optimal layer for a package based on its reverse dependencies.
@@ -548,6 +530,54 @@ func (a *Analyzer) calculateOptimalLayer(
 	}
 	// True leaf package with no dependents - assign to bottom layer
 	return 0
+}
+
+// organizePackagesByLayer organizes packages into layers and sorts them.
+func organizePackagesByLayer(graph *DependencyGraph, layers map[string]int) {
+	// Find maximum layer
+	maxLayer := 0
+	for _, layer := range layers {
+		if layer > maxLayer {
+			maxLayer = layer
+		}
+	}
+
+	// Initialize layers slice
+	graph.Layers = make([][]string, maxLayer+1)
+
+	// Assign packages to layers
+	for pkgPath, layer := range layers {
+		if graph.Packages[pkgPath] != nil {
+			graph.Layers[layer] = append(graph.Layers[layer], pkgPath)
+		}
+	}
+
+	// Sort packages within each layer for deterministic order
+	for i := range graph.Layers {
+		sort.Strings(graph.Layers[i])
+	}
+}
+
+func (a *Analyzer) calculateLayers(graph *DependencyGraph) {
+	// First, detect circular dependencies to exclude them from layer calculation
+	circularEdges := a.detectCircularDependencies(graph)
+
+	// Build reverse dependency map to understand what depends on each package
+	reverseDeps := a.buildReverseDependencyMap(graph, circularEdges)
+
+	// Initialize all packages to unassigned (-1)
+	layers := initializeLayerMap(graph)
+
+	// Use multiple passes to ensure convergence
+	maxIterations := len(graph.Packages) + maxIterationsPadding
+	for range maxIterations {
+		if !a.iterateLayerCalculation(graph, layers, reverseDeps) {
+			break // No changes occurred, we've converged
+		}
+	}
+
+	// Organize packages by layer
+	organizePackagesByLayer(graph, layers)
 }
 
 // detectCircularDependencies identifies packages that have circular dependencies.
@@ -723,19 +753,15 @@ func (a *Analyzer) fileContainsMainFunction(filePath string) (bool, error) {
 	return false, nil
 }
 
-// AnalyzeMultipleEntryPoints finds and analyzes all entry points in a repository.
-func (a *Analyzer) AnalyzeMultipleEntryPoints( //nolint:gocognit
-	repoRoot string,
-	excludeExternal bool,
-	excludeDirs []string,
-) (*MultiEntryAnalysisResult, error) {
+// validateRepositoryRoot validates the repository root path.
+func validateRepositoryRoot(repoRoot string) (*MultiEntryAnalysisResult, string) {
 	// Convert to absolute path
 	absRepoRoot, err := filepath.Abs(repoRoot)
 	if err != nil {
 		return &MultiEntryAnalysisResult{
 			Success: false,
 			Error:   fmt.Sprintf("Error resolving repository path: %v", err),
-		}, nil
+		}, ""
 	}
 
 	// Check if repository root exists
@@ -743,11 +769,107 @@ func (a *Analyzer) AnalyzeMultipleEntryPoints( //nolint:gocognit
 		return &MultiEntryAnalysisResult{
 			Success: false,
 			Error:   fmt.Sprintf("Repository root does not exist: %s", absRepoRoot),
-		}, nil
+		}, ""
 	}
 
+	return nil, absRepoRoot
+}
+
+// processEntryPoint processes a single entry point and returns an EntryPoint struct.
+func (a *Analyzer) processEntryPoint(
+	entryPath, absRepoRoot string,
+	excludeExternal bool,
+	excludeDirs []string,
+) *EntryPoint {
+	// Get relative path from repository root
+	relPath, relErr := filepath.Rel(absRepoRoot, entryPath)
+	if relErr != nil {
+		slog.Warn("Warning: failed to get relative path for", "entryPath", entryPath, "error", relErr)
+		return nil
+	}
+
+	// Analyze this entry point
+	graph, analyzeErr := a.AnalyzeFromFile(entryPath, excludeExternal, excludeDirs)
+	if analyzeErr != nil {
+		slog.Warn("Warning: failed to analyze entry point", "entryPath", entryPath, "error", analyzeErr)
+		return nil
+	}
+
+	// Get package path for this entry point
+	pkgPath, pkgErr := a.getPackageFromFile(entryPath)
+	if pkgErr != nil {
+		slog.Warn("Warning: failed to get package path for",
+			"entryPath", entryPath,
+			"error", pkgErr)
+		return nil
+	}
+
+	// Create entry point record (DOT content will be generated later)
+	return &EntryPoint{
+		Path:         entryPath,
+		RelativePath: relPath,
+		PackagePath:  pkgPath,
+		DOTContent:   "", // Will be populated by the caller
+		Graph:        graph,
+	}
+}
+
+// processAllEntryPoints processes all entry points and returns a slice of valid EntryPoint structs.
+func (a *Analyzer) processAllEntryPoints(
+	entryPointPaths []string,
+	absRepoRoot string,
+	excludeExternal bool,
+	excludeDirs []string,
+) []EntryPoint {
+	var entryPoints []EntryPoint
+
+	for _, entryPath := range entryPointPaths {
+		if entryPoint := a.processEntryPoint(entryPath, absRepoRoot, excludeExternal, excludeDirs); entryPoint != nil {
+			entryPoints = append(entryPoints, *entryPoint)
+		}
+	}
+
+	return entryPoints
+}
+
+// determineResultModuleName determines the appropriate module name for the result.
+func determineResultModuleName(entryPoints []EntryPoint, absRepoRoot string) string {
+	if len(entryPoints) == 0 {
+		return filepath.Base(absRepoRoot)
+	}
+
+	firstModuleName := entryPoints[0].Graph.ModuleName
+	allSameModule := true
+	for _, ep := range entryPoints[1:] {
+		if ep.Graph.ModuleName != firstModuleName {
+			allSameModule = false
+			break
+		}
+	}
+
+	if allSameModule {
+		// All entry points belong to the same module
+		return firstModuleName
+	}
+	// Multiple modules detected (monorepo), use repository name
+	return filepath.Base(absRepoRoot)
+}
+
+// AnalyzeMultipleEntryPoints finds and analyzes all entry points in a repository.
+func (a *Analyzer) AnalyzeMultipleEntryPoints(
+	repoRoot string,
+	excludeExternal bool,
+	excludeDirs []string,
+) (*MultiEntryAnalysisResult, error) {
+	// Validate repository root
+	result, absRepoRoot := validateRepositoryRoot(repoRoot)
+	if result != nil {
+		return result, nil
+	}
+	repoRoot = absRepoRoot
+
 	// Find all entry points
-	entryPointPaths, err := a.FindEntryPoints(absRepoRoot)
+	entryPointPaths, err := a.FindEntryPoints(repoRoot)
 	if err != nil {
 		return &MultiEntryAnalysisResult{
 			Success: false,
@@ -762,43 +884,8 @@ func (a *Analyzer) AnalyzeMultipleEntryPoints( //nolint:gocognit
 		}, nil
 	}
 
-	// Analyze each entry point
-	var entryPoints []EntryPoint
-	for _, entryPath := range entryPointPaths {
-		// Get relative path from repository root
-		relPath, relErr := filepath.Rel(absRepoRoot, entryPath)
-		if relErr != nil {
-			slog.Warn("Warning: failed to get relative path for", "entryPath", entryPath, "error", relErr)
-			continue
-		}
-
-		// Analyze this entry point
-		graph, analyzeErr := a.AnalyzeFromFile(entryPath, excludeExternal, excludeDirs)
-		if analyzeErr != nil {
-			slog.Warn("Warning: failed to analyze entry point", "entryPath", entryPath, "error", analyzeErr)
-			continue
-		}
-
-		// Get package path for this entry point
-		pkgPath, pkgErr := a.getPackageFromFile(entryPath)
-		if pkgErr != nil {
-			slog.Warn("Warning: failed to get package path for",
-				"entryPath", entryPath,
-				"error", pkgErr)
-			continue
-		}
-
-		// Create entry point record (DOT content will be generated later)
-		entryPoint := EntryPoint{
-			Path:         entryPath,
-			RelativePath: relPath,
-			PackagePath:  pkgPath,
-			DOTContent:   "", // Will be populated by the caller
-			Graph:        graph,
-		}
-
-		entryPoints = append(entryPoints, entryPoint)
-	}
+	// Process all entry points
+	entryPoints := a.processAllEntryPoints(entryPointPaths, repoRoot, excludeExternal, excludeDirs)
 
 	if len(entryPoints) == 0 {
 		return &MultiEntryAnalysisResult{
@@ -807,35 +894,13 @@ func (a *Analyzer) AnalyzeMultipleEntryPoints( //nolint:gocognit
 		}, nil
 	}
 
-	// Determine the appropriate module name for the result
-	// For single-module projects, use the module name
-	// For monorepos with multiple modules, use the repository name
-	var resultModuleName string
-	if len(entryPoints) > 0 {
-		firstModuleName := entryPoints[0].Graph.ModuleName
-		allSameModule := true
-		for _, ep := range entryPoints[1:] {
-			if ep.Graph.ModuleName != firstModuleName {
-				allSameModule = false
-				break
-			}
-		}
-
-		if allSameModule {
-			// All entry points belong to the same module
-			resultModuleName = firstModuleName
-		} else {
-			// Multiple modules detected (monorepo), use repository name
-			resultModuleName = filepath.Base(absRepoRoot)
-		}
-	} else {
-		resultModuleName = filepath.Base(absRepoRoot)
-	}
+	// Determine module name
+	resultModuleName := determineResultModuleName(entryPoints, repoRoot)
 
 	return &MultiEntryAnalysisResult{
 		Success:     true,
 		EntryPoints: entryPoints,
-		RepoRoot:    absRepoRoot,
+		RepoRoot:    repoRoot,
 		ModuleName:  resultModuleName,
 	}, nil
 }

@@ -222,7 +222,7 @@ func TestGenerateDOTContent_DeterministicOutput(t *testing.T) {
 }
 
 // TestGenerateDOTContent_NodeSanitization tests node ID sanitization through black-box approach.
-func TestGenerateDOTContent_NodeSanitization(t *testing.T) { //nolint:gocognit
+func TestGenerateDOTContent_NodeSanitization(t *testing.T) {
 	testCases := []struct {
 		name              string
 		packagePath       string
@@ -257,57 +257,12 @@ func TestGenerateDOTContent_NodeSanitization(t *testing.T) { //nolint:gocognit
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			// Create a simple graph with the problematic package path
-			graph := &analyzer.DependencyGraph{
-				EntryPackage: tc.packagePath,
-				ModuleName:   "test",
-				Packages: map[string]*analyzer.PackageInfo{
-					tc.packagePath: {
-						Name:         "test",
-						Path:         tc.packagePath,
-						Dependencies: []string{},
-						FileCount:    1,
-					},
-				},
-			}
-
+			graph := createTestGraph(tc.packagePath)
 			viz := visualizer.New()
 			dotContent := viz.GenerateDOTContent(graph)
 
-			// Check that the sanitized node ID appears in the output
-			if !strings.Contains(dotContent, tc.expectedSanitized) {
-				t.Errorf("Expected to find sanitized node ID '%s' in DOT output", tc.expectedSanitized)
-			}
-
-			// Check that problematic characters are not present in node IDs
-			for _, char := range tc.shouldNotContain {
-				// Look for the character in actual node ID contexts (lines that define specific nodes)
-				lines := strings.Split(dotContent, "\n")
-				for _, line := range lines {
-					trimmedLine := strings.TrimSpace(line)
-					// Skip global graph attribute definitions and empty lines
-					if strings.HasPrefix(trimmedLine, "node [") ||
-						strings.HasPrefix(trimmedLine, "edge [") ||
-						strings.HasPrefix(trimmedLine, "digraph") ||
-						strings.HasPrefix(trimmedLine, "{") ||
-						strings.HasPrefix(trimmedLine, "}") ||
-						trimmedLine == "" {
-						continue
-					}
-
-					// This should be a node definition line (nodeID [attributes])
-					if strings.Contains(line, "[") && strings.Contains(line, "]") {
-						// Extract the node ID (part before the first '[')
-						nodeIDPart := strings.Split(trimmedLine, "[")[0]
-						if strings.Contains(nodeIDPart, char) {
-							t.Errorf(
-								"Found problematic character '%s' in node ID '%s' in line: %s",
-								char, strings.TrimSpace(nodeIDPart), line,
-							)
-						}
-					}
-				}
-			}
+			validateSanitizedNodeID(t, dotContent, tc.expectedSanitized)
+			validateNoProblematicChars(t, dotContent, tc.shouldNotContain)
 		})
 	}
 }
@@ -595,5 +550,83 @@ func TestGenerateDOTContent_ComplexStructures(t *testing.T) {
 	closeBraces := strings.Count(dotContent, "}")
 	if openBraces != closeBraces {
 		t.Errorf("Unbalanced braces in DOT output: %d open, %d close", openBraces, closeBraces)
+	}
+}
+
+// Helper functions for visualizer test support
+
+// createTestGraph creates a simple test graph with a single package.
+func createTestGraph(packagePath string) *analyzer.DependencyGraph {
+	return &analyzer.DependencyGraph{
+		EntryPackage: packagePath,
+		ModuleName:   "test",
+		Packages: map[string]*analyzer.PackageInfo{
+			packagePath: {
+				Name:         "test",
+				Path:         packagePath,
+				Dependencies: []string{},
+				FileCount:    1,
+			},
+		},
+	}
+}
+
+// shouldSkipDOTLine determines if a DOT line should be skipped during node ID validation.
+func shouldSkipDOTLine(line string) bool {
+	trimmed := strings.TrimSpace(line)
+
+	skipPrefixes := []string{
+		"node [", "edge [", "digraph", "{", "}", "",
+	}
+
+	for _, prefix := range skipPrefixes {
+		if strings.HasPrefix(trimmed, prefix) || trimmed == prefix {
+			return true
+		}
+	}
+
+	return false
+}
+
+// extractNodeIDsFromDOT extracts node IDs from DOT content lines.
+func extractNodeIDsFromDOT(dotContent string) []string {
+	var nodeIDs []string
+	lines := strings.Split(dotContent, "\n")
+
+	for _, line := range lines {
+		if shouldSkipDOTLine(line) {
+			continue
+		}
+
+		trimmedLine := strings.TrimSpace(line)
+		if strings.Contains(line, "[") && strings.Contains(line, "]") {
+			// Extract the node ID (part before the first '[')
+			nodeIDPart := strings.Split(trimmedLine, "[")[0]
+			nodeIDs = append(nodeIDs, strings.TrimSpace(nodeIDPart))
+		}
+	}
+
+	return nodeIDs
+}
+
+// validateSanitizedNodeID checks that the expected sanitized node ID appears in DOT output.
+func validateSanitizedNodeID(t *testing.T, dotContent, expectedSanitized string) {
+	t.Helper()
+	if !strings.Contains(dotContent, expectedSanitized) {
+		t.Errorf("Expected to find sanitized node ID '%s' in DOT output", expectedSanitized)
+	}
+}
+
+// validateNoProblematicChars checks that problematic characters don't appear in node IDs.
+func validateNoProblematicChars(t *testing.T, dotContent string, problematicChars []string) {
+	t.Helper()
+	nodeIDs := extractNodeIDsFromDOT(dotContent)
+
+	for _, char := range problematicChars {
+		for _, nodeID := range nodeIDs {
+			if strings.Contains(nodeID, char) {
+				t.Errorf("Found problematic character '%s' in node ID '%s'", char, nodeID)
+			}
+		}
 	}
 }

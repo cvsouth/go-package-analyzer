@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"cvsouth/go-package-analyzer/internal/analyzer"
+	"cvsouth/go-package-analyzer/internal/scanner"
 	"cvsouth/go-package-analyzer/internal/visualizer"
 )
 
@@ -67,6 +68,8 @@ func main() {
 
 	mux.HandleFunc("/api/analyze", handleAnalyze)
 	mux.HandleFunc("/api/analyze-repo", handleAnalyzeRepo)
+	mux.HandleFunc("/api/scan-directories", handleScanDirectories)
+	mux.HandleFunc("/api/list-directory", handleListDirectory)
 
 	server.Handler = mux
 
@@ -278,6 +281,80 @@ func handleAnalyzeRepo(w http.ResponseWriter, r *http.Request) {
 		RepoRoot:    result.RepoRoot,
 		ModuleName:  result.ModuleName,
 	})
+}
+
+func handleScanDirectories(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	if r.Method != http.MethodGet {
+		slog.Info("handleScanDirectories: Method not allowed", slog.String("method", r.Method))
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Create scanner and get filesystem roots
+	scan := scanner.New()
+	result, err := scan.GetFilesystemRoots()
+	if err != nil {
+		slog.Error("handleScanDirectories: Scan failed", slog.Any("error", err))
+		if encodeErr := json.NewEncoder(w).Encode(scanner.ScanResult{
+			Success: false,
+			Error:   fmt.Sprintf("Error getting filesystem roots: %v", err),
+		}); encodeErr != nil {
+			slog.Error("handleScanDirectories: Error encoding error response", slog.Any("error", encodeErr))
+		}
+		return
+	}
+
+	// Return the scan result
+	if encodeErr := json.NewEncoder(w).Encode(result); encodeErr != nil {
+		slog.Error("handleScanDirectories: Error encoding response", slog.Any("error", encodeErr))
+		return
+	}
+}
+
+func handleListDirectory(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	if r.Method != http.MethodGet {
+		slog.Info("handleListDirectory: Method not allowed", slog.String("method", r.Method))
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Get the directory path from query parameter
+	dirPath := r.URL.Query().Get("path")
+	if dirPath == "" {
+		if encodeErr := json.NewEncoder(w).Encode(scanner.DirectoryListResult{
+			Success: false,
+			Error:   "path parameter is required",
+		}); encodeErr != nil {
+			slog.Error("handleListDirectory: Error encoding error response", slog.Any("error", encodeErr))
+		}
+		return
+	}
+
+	// Create scanner and list directory
+	scan := scanner.New()
+	result, err := scan.ListDirectory(dirPath)
+	if err != nil {
+		slog.Error("handleListDirectory: List failed", slog.Any("error", err), slog.String("path", dirPath))
+		if encodeErr := json.NewEncoder(w).Encode(scanner.DirectoryListResult{
+			Success: false,
+			Error:   fmt.Sprintf("Error listing directory: %v", err),
+		}); encodeErr != nil {
+			slog.Error("handleListDirectory: Error encoding error response", slog.Any("error", encodeErr))
+		}
+		return
+	}
+
+	// Return the list result
+	if encodeErr := json.NewEncoder(w).Encode(result); encodeErr != nil {
+		slog.Error("handleListDirectory: Error encoding response", slog.Any("error", encodeErr))
+		return
+	}
 }
 
 func sendJSONResponse(w http.ResponseWriter, response APIResponse) {
