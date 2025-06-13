@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"cvsouth/go-package-analyzer/internal/scanner"
+	"github.com/cvsouth/go-package-analyzer/internal/scanner"
 )
 
 // FuzzListDirectory tests the ListDirectory function with various directory paths.

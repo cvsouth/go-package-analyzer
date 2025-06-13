@@ -1,11 +1,12 @@
 package analyzer_test
 
 import (
-	"cvsouth/go-package-analyzer/internal/analyzer"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/cvsouth/go-package-analyzer/internal/analyzer"
 )
 
 // FuzzAnalyzeFromFile tests the AnalyzeFromFile function with various file paths.
