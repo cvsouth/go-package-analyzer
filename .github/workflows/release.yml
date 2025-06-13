@@ -5,11 +5,17 @@ on:
     branches:
       - main  # Change this to your default branch if different
 
+# Declare default permissions as read only.
+permissions: read-all
+
 jobs:
   release:
     runs-on: ubuntu-latest
     permissions:
+      # Needed to create releases and upload assets
       contents: write
+      # Needed for github CLI to create releases
+      pull-requests: read
     
     steps:
     - name: Checkout code
