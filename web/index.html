@@ -9,47 +9,496 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,100..800;1,100..800&display=swap" rel="stylesheet">
     <style>
+        /* Chrome-specific font loading fix */
         * {
-            font-family: 'JetBrains Mono', monospace !important;
+            font-family: 'JetBrains Mono', 'Consolas', 'Monaco', 'Courier New', monospace !important;
+        }
+        
+        /* Chrome flexbox fixes */
+        .directory-tree {
+            max-height: 60vh;
+            overflow-y: auto;
+            /* Chrome scrollbar styling */
+            scrollbar-width: thin;
+            scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
+            /* Prevent text selection in entire tree */
+            -webkit-user-select: none;
+            -moz-user-select: none;
+            -ms-user-select: none;
+            user-select: none;
+        }
+        
+        .directory-tree::-webkit-scrollbar {
+            width: 8px;
+        }
+        
+        .directory-tree::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        
+        .directory-tree::-webkit-scrollbar-thumb {
+            background-color: rgba(255, 255, 255, 0.2);
+            border-radius: 4px;
+        }
+        
+        .directory-tree::-webkit-scrollbar-thumb:hover {
+            background-color: rgba(255, 255, 255, 0.3);
+        }
+        
+        .directory-item {
+            cursor: pointer;
+            padding: 6px 8px;
+            border-radius: 4px;
+            transition: background-color 0.2s ease;
+            display: flex;
+            align-items: center;
+            min-height: 32px;
+            /* Chrome rendering optimization */
+            will-change: background-color;
+            -webkit-transform: translateZ(0);
+            transform: translateZ(0);
+            /* Prevent text selection */
+            -webkit-user-select: none;
+            -moz-user-select: none;
+            -ms-user-select: none;
+            user-select: none;
+        }
+        
+        .directory-item:hover {
+            background-color: rgba(255, 255, 255, 0.1);
+        }
+        
+        .directory-item.selected {
+            background-color: rgba(255, 255, 255, 0.2);
+        }
+        
+        .directory-item.is-go-project {
+            font-weight: 600;
+            color: #00ACD7;
+        }
+        
+        .expand-icon {
+            display: inline-flex;
+            width: 16px;
+            height: 16px;
+            align-items: center;
+            justify-content: center;
+            transition: transform 0.2s ease;
+            /* Chrome rendering optimization */
+            will-change: transform;
+            -webkit-transform: translateZ(0);
+            transform: translateZ(0);
+            /* Prevent text selection */
+            -webkit-user-select: none;
+            -moz-user-select: none;
+            -ms-user-select: none;
+            user-select: none;
+        }
+        
+        .expand-icon.expanded {
+            transform: rotate(90deg);
+        }
+        
+        .modal-overlay {
+            background-color: rgba(0, 0, 0, 0.85);
+            backdrop-filter: blur(4px);
+            -webkit-backdrop-filter: blur(4px);
+        }
+        
+        /* Chrome-specific fixes for modal */
+        .modal-content {
+            /* Ensure proper rendering in Chrome */
+            -webkit-transform: translateZ(0);
+            transform: translateZ(0);
+            /* Better border rendering */
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+        }
+        
+        /* Go logo optimization for Chrome */
+        .go-logo {
+            display: inline-block;
+            width: auto;
+            height: 12px;
+            vertical-align: middle;
+            /* Chrome SVG rendering optimization */
+            shape-rendering: geometricPrecision;
+            image-rendering: -webkit-optimize-contrast;
+        }
+        
+        /* Sidebar fixes for Chrome */
+        .recent-projects-sidebar {
+            /* Ensure proper layering in Chrome */
+            -webkit-transform: translateZ(0);
+            transform: translateZ(0);
+        }
+        
+        /* Button improvements for Chrome */
+        .btn-primary {
+            /* Better button rendering in Chrome */
+            -webkit-appearance: none;
+            appearance: none;
+            border: none;
+            outline: none;
+        }
+        
+        .btn-primary:focus {
+            outline: 2px solid rgba(255, 255, 255, 0.3);
+            outline-offset: 2px;
+        }
+        
+        /* Directory name truncation fix for Chrome */
+        .directory-name {
+            flex: 1;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            min-width: 0; /* Chrome flexbox fix */
+            max-width: 100%;
+        }
+        
+        /* Chrome-specific fixes for directory tree container */
+        #directoryContent {
+            min-height: 0;
+            flex: 1;
         }
     </style>
 </head>
 <body class="m-0 p-0 h-screen bg-black text-white flex">
-    <div id="recentProjectsSidebar" class="fixed left-0 top-0 h-screen w-[360px] 2xl:w-[480px] border-r border-white/10 overflow-y-auto bg-transparent z-40">
+    <div id="recentProjectsSidebar" class="recent-projects-sidebar fixed left-0 top-0 h-screen w-[360px] 2xl:w-[480px] border-r border-white/10 overflow-y-auto bg-transparent z-40">
         <ul id="recentProjectsList" class="w-full"></ul>
     </div>
     <!-- Spacer div for sidebar width on small screens -->
     <div id="recentProjectsSidebarSpacer" class="block 2xl:hidden w-[360px] 2xl:w-[480px]" aria-hidden="true"></div>
     <div class="flex-1 flex justify-center items-center min-h-screen">
         <div class="text-center flex flex-col items-center w-full max-w-[450px]">
-            <input id="repoInput" type="text" placeholder="Local project path e.g. /path/to/project"
-                   class="px-5 py-3 text-base border-none bg-white/10 text-white w-[450px] mb-5 focus:outline-none rounded-none"
-                   oninput="saveInputValue()" />
-            <button onclick="navigateToGraph()" class="px-5 font-medium py-1.5 text-base bg-white text-black border-none cursor-pointer transition-colors hover:bg-gray-200 rounded-none">
-                Analyze Repository
+            <button onclick="openProject()" class="btn-primary px-6 rounded font-medium py-3 text-base bg-white text-black border-none cursor-pointer transition-colors duration-200 hover:bg-gray-200 focus:bg-gray-200">
+                Open Project
             </button>
         </div>
     </div>
+
+    <!-- Directory Selection Modal -->
+    <div id="directoryModal" class="fixed inset-0 modal-overlay z-50 flex items-center justify-center" style="display: none;">
+        <div class="modal-content bg-black w-[800px] max-w-[90vw] max-h-[80vh] flex flex-col" style="min-height: 0;">
+            <!-- Modal Header -->
+            <div class="border-b border-white/20 px-6 py-4 flex justify-between items-center">
+                <h2 class="font-medium text-lg">Select Go Project</h2>
+                <button onclick="closeDirectoryModal()" class="text-white/70 hover:text-white text-2xl leading-none transition-colors duration-200">&times;</button>
+            </div>
+
+            <!-- Error State -->
+            <div id="errorState" class="flex-1 flex items-center justify-center py-12" style="display: none;">
+                <div class="text-center text-red-400">
+                    <p id="errorMessage">Failed to scan directories</p>
+                    <button onclick="loadDirectoryTree()" class="mt-4 px-4 py-2 bg-white/10 hover:bg-white/20 rounded text-sm transition-colors duration-200">Retry</button>
+                </div>
+            </div>
+
+            <!-- Directory Tree -->
+            <div id="directoryContent" class="flex-1 overflow-hidden">
+                <div class="directory-tree px-6 py-4">
+                    <div id="directoryTree"></div>
+                </div>
+            </div>
+
+            <!-- Modal Footer -->
+            <div id="modalFooter" class="border-t border-white/20 px-6 py-4 flex justify-end">
+                <div class="flex space-x-3">
+                    <button onclick="closeDirectoryModal()" class="px-4 py-2 bg-white/10 hover:bg-white/20 rounded text-sm transition-colors duration-200">Cancel</button>
+                    <button id="selectButton" onclick="selectDirectory()" class="btn-primary px-4 py-2 bg-white text-black hover:bg-gray-200 disabled:cursor-not-allowed rounded text-sm disabled:opacity-50 disabled:hover:bg-white transition-colors duration-200" disabled>Select</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <script>
-        // Load saved value when page loads
+        let selectedDirectoryPath = null;
+        let directoryData = null;
+
+        // Load recent projects when page loads
         window.addEventListener('load', function() {
-            const savedValue = localStorage.getItem('repoPath');
-            if (savedValue) {
-                document.getElementById('repoInput').value = savedValue;
-            }
             renderRecentProjects();
         });
 
-        // Save input value to localStorage when changed
-        function saveInputValue() {
-            const input = document.getElementById('repoInput');
-            localStorage.setItem('repoPath', input.value);
+        // Open project directory selection
+        async function openProject() {
+            document.getElementById('directoryModal').style.display = 'flex';
+            loadDirectoryTree();
         }
 
-        function navigateToGraph() {
-            const input = document.getElementById('repoInput');
-            const repoValue = input.value.trim();
-            window.location.href = repoValue ? `/graph?repo=${encodeURIComponent(repoValue)}` : '/graph';
+        // Close the directory modal
+        function closeDirectoryModal() {
+            document.getElementById('directoryModal').style.display = 'none';
+            selectedDirectoryPath = null;
+            directoryData = null;
+            
+            // Reset button state
+            const selectButton = document.getElementById('selectButton');
+            selectButton.disabled = true;
+        }
+
+        // Load directory tree from backend
+        async function loadDirectoryTree() {
+            try {
+                const response = await fetch('/api/scan-directories');
+                const result = await response.json();
+
+                if (result.success && result.tree) {
+                    directoryData = result.tree;
+                    renderDirectoryTree(result.tree);
+                    showDirectoryContent();
+                } else {
+                    showErrorState(result.error || 'Failed to scan directories');
+                }
+            } catch (error) {
+                console.error('Error loading directory tree:', error);
+                showErrorState('Network error occurred while scanning directories');
+            }
+        }
+
+        // Show error state
+        function showErrorState(message) {
+            document.getElementById('errorState').style.display = 'flex';
+            document.getElementById('directoryContent').style.display = 'none';
+            document.getElementById('modalFooter').style.display = 'none';
+            document.getElementById('errorMessage').textContent = message;
+        }
+
+        // Show directory content
+        function showDirectoryContent() {
+            document.getElementById('errorState').style.display = 'none';
+            document.getElementById('directoryContent').style.display = 'block';
+            document.getElementById('modalFooter').style.display = 'flex';
+        }
+
+        // Render directory tree
+        function renderDirectoryTree(node, container = null, level = 0) {
+            if (!container) {
+                container = document.getElementById('directoryTree');
+                container.innerHTML = '';
+            }
+
+            if (!node.children || node.children.length === 0) {
+                return;
+            }
+
+            for (const child of node.children) {
+                const item = createDirectoryItem(child, level);
+                container.appendChild(item);
+
+                // Create a container for potential child directories (will be loaded on demand)
+                const childContainer = document.createElement('div');
+                childContainer.className = 'ml-4';
+                childContainer.style.display = 'none';
+                childContainer.id = `children-${child.path.replace(/[^a-zA-Z0-9]/g, '_')}`;
+                container.appendChild(childContainer);
+            }
+        }
+
+        // Render directory list (from API response)
+        function renderDirectoryList(directories, container, level) {
+            container.innerHTML = ''; // Clear existing content
+
+            for (const dir of directories) {
+                const item = createDirectoryItem(dir, level);
+                container.appendChild(item);
+
+                // Create a container for potential child directories
+                const childContainer = document.createElement('div');
+                childContainer.className = 'ml-4';
+                childContainer.style.display = 'none';
+                childContainer.id = `children-${dir.path.replace(/[^a-zA-Z0-9]/g, '_')}`;
+                container.appendChild(childContainer);
+            }
+        }
+
+        // Create directory item element
+        function createDirectoryItem(node, level) {
+            const item = document.createElement('div');
+            item.className = `directory-item ${node.isGoProject ? 'is-go-project' : ''}`;
+            item.style.marginLeft = `${level * 16}px`;
+            // Chrome-specific fix for proper rendering
+            item.style.position = 'relative';
+
+            const childrenId = `children-${node.path.replace(/[^a-zA-Z0-9]/g, '_')}`;
+
+            // Expand/collapse icon (show for all directories)
+            const expandIcon = document.createElement('span');
+            expandIcon.className = 'expand-icon mr-2 text-white/50 cursor-pointer';
+            expandIcon.innerHTML = '▶';
+            expandIcon.dataset.expanded = 'false';
+            expandIcon.dataset.loaded = 'false';
+            expandIcon.dataset.path = node.path;
+            // Chrome rendering fix
+            expandIcon.style.flexShrink = '0';
+
+            // Directory name with better Chrome compatibility
+            const nameSpan = document.createElement('span');
+            nameSpan.textContent = node.name;
+            nameSpan.className = 'directory-name';
+            // Chrome text rendering fix
+            nameSpan.style.lineHeight = '1.4';
+
+            // Go project indicator with optimized SVG
+            if (node.isGoProject) {
+                const indicator = document.createElement('span');
+                indicator.innerHTML = `<svg class="go-logo ml-2" viewBox="0 0 205.4 76.7" xmlns="http://www.w3.org/2000/svg">
+                    <path fill="#00ACD7" d="M15.5,23.2c-0.4,0-0.5-0.2-0.3-0.5l2.1-2.7c0.2-0.3,0.7-0.5,1.1-0.5h35.7c0.4,0,0.5,0.3,0.3,0.6l-1.7,2.6c-0.2,0.3-0.7,0.6-1,0.6L15.5,23.2z"/>
+                    <path fill="#00ACD7" d="M0.4,32.4c-0.4,0-0.5-0.2-0.3-0.5l2.1-2.7c0.2-0.3,0.7-0.5,1.1-0.5h45.6c0.4,0,0.6,0.3,0.5,0.6l-0.8,2.4c-0.1,0.4-0.5,0.6-0.9,0.6L0.4,32.4z"/>
+                    <path fill="#00ACD7" d="M24.6,41.6c-0.4,0-0.5-0.3-0.3-0.6l1.4-2.5c0.2-0.3,0.6-0.6,1-0.6h20c0.4,0,0.6,0.3,0.6,0.7L47.1,41c0,0.4-0.4,0.7-0.7,0.7L24.6,41.6z"/>
+                    <path fill="#00ACD7" d="M128.4,21.4c-6.3,1.6-10.6,2.8-16.8,4.4c-1.5,0.4-1.6,0.5-2.9-1c-1.5-1.7-2.6-2.8-4.7-3.8c-6.3-3.1-12.4-2.2-18.1,1.5c-6.8,4.4-10.3,10.9-10.2,19c0.1,8,5.6,14.6,13.5,15.7c6.8,0.9,12.5-1.5,17-6.6c0.9-1.1,1.7-2.3,2.7-3.7c-3.6,0-8.1,0-19.3,0c-2.1,0-2.6-1.3-1.9-3c1.3-3.1,3.7-8.3,5.1-10.9c0.3-0.6,1-1.6,2.5-1.6c5.1,0,23.9,0,36.4,0c-0.2,2.7-0.2,5.4-0.6,8.1c-1.1,7.2-3.8,13.8-8.2,19.6c-7.2,9.5-16.6,15.4-28.5,17c-9.8,1.3-18.9-0.6-26.9-6.6c-7.4-5.6-11.6-13-12.7-22.2c-1.3-10.9,1.9-20.7,8.5-29.3c7.1-9.3,16.5-15.2,28-17.3c9.4-1.7,18.4-0.6,26.5,4.9c5.3,3.5,9.1,8.3,11.6,14.1C130,20.6,129.6,21.1,128.4,21.4z"/>
+                    <path fill="#00ACD7" d="M161.5,76.7c-9.1-0.2-17.4-2.8-24.4-8.8c-5.9-5.1-9.6-11.6-10.8-19.3c-1.8-11.3,1.3-21.3,8.1-30.2c7.3-9.6,16.1-14.6,28-16.7c10.2-1.8,19.8-0.8,28.5,5.1c7.9,5.4,12.8,12.7,14.1,22.3c1.7,13.5-2.2,24.5-11.5,33.9c-6.6,6.7-14.7,10.9-24,12.8C166.8,76.3,164.1,76.4,161.5,76.7z M185.3,36.3c-0.1-1.3-0.1-2.3-0.3-3.3c-1.8-9.9-10.9-15.5-20.4-13.3c-9.3,2.1-15.3,8-17.5,17.4c-1.8,7.8,2,15.7,9.2,18.9c5.5,2.4,11,2.1,16.3-0.6C180.5,51.3,184.8,44.9,185.3,36.3z"/>
+                </svg>`;
+                nameSpan.appendChild(indicator);
+            }
+
+            item.appendChild(expandIcon);
+            item.appendChild(nameSpan);
+
+            // Click handlers
+            expandIcon.addEventListener('click', function(e) {
+                e.stopPropagation();
+                toggleDirectoryLazy(childrenId, expandIcon, node.path, level + 1);
+            });
+
+            item.addEventListener('click', function() {
+                selectDirectoryItem(node, item);
+            });
+
+            // Double-click handler to expand/collapse directory
+            item.addEventListener('dblclick', function(e) {
+                e.stopPropagation();
+                toggleDirectoryLazy(childrenId, expandIcon, node.path, level + 1);
+            });
+
+            return item;
+        }
+
+        // Toggle directory expansion with lazy loading
+        async function toggleDirectoryLazy(childrenId, expandIcon, dirPath, level) {
+            const childrenContainer = document.getElementById(childrenId);
+            if (!childrenContainer) return;
+
+            const isExpanded = expandIcon.dataset.expanded === 'true';
+            const isLoaded = expandIcon.dataset.loaded === 'true';
+
+            if (isExpanded) {
+                // Collapse
+                childrenContainer.style.display = 'none';
+                expandIcon.classList.remove('expanded');
+                expandIcon.dataset.expanded = 'false';
+            } else {
+                // Expand
+                if (!isLoaded) {
+                    try {
+                        // Load directory contents
+                        const response = await fetch(`/api/list-directory?path=${encodeURIComponent(dirPath)}`);
+                        const result = await response.json();
+
+                        if (result.success && result.directories) {
+                            if (result.directories.length === 0) {
+                                childrenContainer.innerHTML = ''; // Show nothing - directory may contain files but no subdirectories
+                            } else {
+                                renderDirectoryList(result.directories, childrenContainer, level);
+                            }
+                            expandIcon.dataset.loaded = 'true';
+                        } else {
+                            // Show the specific error message from the API
+                            const errorMsg = result.error || 'Error loading directory';
+                            childrenContainer.innerHTML = `<div class="text-red-400 text-sm py-1">${errorMsg}</div>`;
+                        }
+                    } catch (error) {
+                        console.error('Error loading directory:', error);
+                        childrenContainer.innerHTML = '<div class="text-red-400 text-sm py-1">Network error</div>';
+                    }
+                    childrenContainer.style.display = 'block';
+                } else {
+                    // Already loaded, just show
+                    childrenContainer.style.display = 'block';
+                }
+
+                expandIcon.classList.add('expanded');
+                expandIcon.dataset.expanded = 'true';
+            }
+        }
+
+        // Toggle directory expansion (legacy function - kept for compatibility)
+        function toggleDirectory(childrenId, expandIcon) {
+            const childrenContainer = document.getElementById(childrenId);
+            if (childrenContainer) {
+                if (childrenContainer.style.display === 'none') {
+                    childrenContainer.style.display = 'block';
+                    expandIcon.classList.add('expanded');
+                } else {
+                    childrenContainer.style.display = 'none';
+                    expandIcon.classList.remove('expanded');
+                }
+            }
+        }
+
+        // Select directory item
+        function selectDirectoryItem(node, itemElement) {
+            // Clear previous selection
+            document.querySelectorAll('.directory-item.selected').forEach(item => {
+                item.classList.remove('selected');
+            });
+
+            // Select this item
+            itemElement.classList.add('selected');
+            selectedDirectoryPath = node.path;
+
+            // Update UI based on whether this is a Go project
+            const selectButton = document.getElementById('selectButton');
+            
+            if (node.isGoProject) {
+                selectButton.disabled = false;
+            } else {
+                selectButton.disabled = true;
+            }
+        }
+
+        // Select directory and navigate
+        function selectDirectory() {
+            if (selectedDirectoryPath) {
+                const pathToNavigate = selectedDirectoryPath; // Store the path before closing modal
+                closeDirectoryModal();
+                navigateToGraphWithPath(pathToNavigate);
+                // Note: addToRecentProjects is called from the graph page only on successful analysis
+            }
+        }
+
+        // Navigate to graph page with selected path
+        function navigateToGraphWithPath(projectPath) {
+            if (projectPath) {
+                window.location.href = `/graph?repo=${encodeURIComponent(projectPath)}`;
+            } else {
+                window.location.href = '/graph';
+            }
+        }
+
+        // Add project to recent projects list
+        function addToRecentProjects(projectPath) {
+            let recent = [];
+            try {
+                recent = JSON.parse(localStorage.getItem('recentProjects') || '[]');
+            } catch (e) {
+                recent = [];
+            }
+
+            // Remove if already exists (to avoid duplicates)
+            recent = recent.filter(proj => proj.path !== projectPath);
+
+            // Add to beginning of list
+            recent.unshift({
+                path: projectPath,
+                timestamp: Date.now()
+            });
+
+            // Keep only last 10 projects
+            recent = recent.slice(0, 10);
+
+            localStorage.setItem('recentProjects', JSON.stringify(recent));
         }
 
         // Render recent projects list in sidebar
@@ -79,6 +528,7 @@
             li.appendChild(removeBtn);
             return li;
         }
+
         function renderRecentProjects() {
             let recent = [];
             try {
@@ -104,6 +554,20 @@
         // Also update after navigation
         window.addEventListener('storage', function(e) {
             if (e.key === 'recentProjects') renderRecentProjects();
+        });
+
+        // Close modal when clicking outside
+        document.getElementById('directoryModal').addEventListener('click', function(e) {
+            if (e.target === this) {
+                closeDirectoryModal();
+            }
+        });
+
+        // Close modal with Escape key
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape' && document.getElementById('directoryModal').style.display !== 'none') {
+                closeDirectoryModal();
+            }
         });
     </script>
 </body>

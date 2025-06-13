@@ -1,6 +1,7 @@
 package main_test
 
 import (
+	"cvsouth/go-package-analyzer/internal/analyzer"
 	"encoding/json"
 	"testing"
 )
@@ -13,11 +14,11 @@ type APIResponse struct {
 }
 
 type MultiEntryAPIResponse struct {
-	Success    bool              `json:"success"`
-	RepoRoot   string            `json:"repoRoot,omitempty"`
-	ModuleName string            `json:"moduleName,omitempty"`
-	Graphs     map[string]string `json:"graphs,omitempty"`
-	Error      string            `json:"error,omitempty"`
+	Success     bool                  `json:"success"`
+	EntryPoints []analyzer.EntryPoint `json:"entryPoints,omitempty"`
+	Error       string                `json:"error,omitempty"`
+	RepoRoot    string                `json:"repoRoot,omitempty"`
+	ModuleName  string                `json:"moduleName,omitempty"`
 }
 
 func TestAPIResponse_JSONSerialization(t *testing.T) {
@@ -77,42 +78,37 @@ func TestAPIResponse_ErrorSerialization(t *testing.T) {
 }
 
 func TestMultiEntryAPIResponse_JSONSerialization(t *testing.T) {
-	// Test multi-entry response
 	response := MultiEntryAPIResponse{
-		Success:    true,
-		RepoRoot:   "/test/repo",
-		ModuleName: "test/module",
-		Graphs: map[string]string{
-			"app1": "digraph app1 { a -> b; }",
-			"app2": "digraph app2 { c -> d; }",
-		},
+		Success:     true,
+		EntryPoints: []analyzer.EntryPoint{},
+		RepoRoot:    "/path/to/repo",
+		ModuleName:  "test-module",
 	}
 
-	data, err := json.Marshal(response)
+	jsonData, err := json.Marshal(response)
 	if err != nil {
-		t.Fatalf("Failed to marshal MultiEntryAPIResponse: %v", err)
+		t.Fatalf("Failed to marshal response: %v", err)
 	}
 
 	var unmarshaled MultiEntryAPIResponse
-	if unmarshalErr := json.Unmarshal(data, &unmarshaled); unmarshalErr != nil {
-		t.Fatalf("Failed to unmarshal MultiEntryAPIResponse: %v", unmarshalErr)
+	if unmarshalErr := json.Unmarshal(jsonData, &unmarshaled); unmarshalErr != nil {
+		t.Fatalf("Failed to unmarshal response: %v", unmarshalErr)
 	}
 
 	if unmarshaled.Success != response.Success {
-		t.Errorf("Expected Success=%v, got %v", response.Success, unmarshaled.Success)
+		t.Errorf("Success field mismatch: got %v, want %v", unmarshaled.Success, response.Success)
 	}
 
 	if unmarshaled.RepoRoot != response.RepoRoot {
-		t.Errorf("Expected RepoRoot='%s', got '%s'", response.RepoRoot, unmarshaled.RepoRoot)
+		t.Errorf("RepoRoot field mismatch: got %v, want %v", unmarshaled.RepoRoot, response.RepoRoot)
 	}
 
-	if len(unmarshaled.Graphs) != len(response.Graphs) {
-		t.Errorf("Expected %d graphs, got %d", len(response.Graphs), len(unmarshaled.Graphs))
+	if unmarshaled.ModuleName != response.ModuleName {
+		t.Errorf("ModuleName field mismatch: got %v, want %v", unmarshaled.ModuleName, response.ModuleName)
 	}
 
-	for key, value := range response.Graphs {
-		if unmarshaled.Graphs[key] != value {
-			t.Errorf("Expected graph[%s]='%s', got '%s'", key, value, unmarshaled.Graphs[key])
-		}
+	if len(unmarshaled.EntryPoints) != len(response.EntryPoints) {
+		t.Errorf("EntryPoints length mismatch: got %d, want %d",
+			len(unmarshaled.EntryPoints), len(response.EntryPoints))
 	}
 }

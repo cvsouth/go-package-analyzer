@@ -7,6 +7,9 @@ import (
 	"testing"
 
 	"cvsouth/go-package-analyzer/internal/analyzer"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestNew(t *testing.T) {
@@ -407,74 +410,32 @@ func TestAnalyzeFromFile_InvalidGoSyntax(t *testing.T) {
 }
 
 // TestAnalyzeFromFile_ModuleFinding tests module detection through black-box approach.
-func TestAnalyzeFromFile_ModuleFinding(t *testing.T) { //nolint:gocognit
+func TestAnalyzeFromFile_ModuleFinding(t *testing.T) {
 	testCases := []struct {
 		name           string
-		setupProject   func(string) string // setup function returns entry file path
+		setupProject   func(*testing.T, string) string // setup function returns entry file path
 		expectedModule string
 		expectError    bool
 	}{
 		{
 			name: "project with go.mod",
-			setupProject: func(tmpDir string) string {
-				// Create go.mod
-				goModContent := "module test/module\n\ngo 1.21\n"
-				goModPath := filepath.Join(tmpDir, "go.mod")
-				if err := os.WriteFile(goModPath, []byte(goModContent), 0644); err != nil {
-					t.Fatalf("Failed to create go.mod: %v", err)
-				}
-
-				// Create main.go
-				mainContent := `package main
-func main() {}`
-				mainPath := filepath.Join(tmpDir, "main.go")
-				if err := os.WriteFile(mainPath, []byte(mainContent), 0644); err != nil {
-					t.Fatalf("Failed to create main.go: %v", err)
-				}
-				return mainPath
+			setupProject: func(t *testing.T, tmpDir string) string {
+				return setupProjectWithGoMod(t, tmpDir, "test/module")
 			},
 			expectedModule: "test/module",
 			expectError:    false,
 		},
 		{
 			name: "nested package in module",
-			setupProject: func(tmpDir string) string {
-				// Create go.mod
-				goModContent := "module my/test/project\n\ngo 1.21\n"
-				goModPath := filepath.Join(tmpDir, "go.mod")
-				if err := os.WriteFile(goModPath, []byte(goModContent), 0644); err != nil {
-					t.Fatalf("Failed to create go.mod: %v", err)
-				}
-
-				// Create nested package
-				pkgDir := filepath.Join(tmpDir, "internal", "handler")
-				if err := os.MkdirAll(pkgDir, 0755); err != nil {
-					t.Fatalf("Failed to create package directory: %v", err)
-				}
-
-				handlerContent := `package handler
-func Handle() {}`
-				handlerPath := filepath.Join(pkgDir, "handler.go")
-				if err := os.WriteFile(handlerPath, []byte(handlerContent), 0644); err != nil {
-					t.Fatalf("Failed to create handler.go: %v", err)
-				}
-				return handlerPath
+			setupProject: func(t *testing.T, tmpDir string) string {
+				return setupNestedPackageProject(t, tmpDir, "my/test/project")
 			},
 			expectedModule: "my/test/project",
 			expectError:    false,
 		},
 		{
-			name: "project without go.mod",
-			setupProject: func(tmpDir string) string {
-				// Create main.go without go.mod
-				mainContent := `package main
-func main() {}`
-				mainPath := filepath.Join(tmpDir, "main.go")
-				if err := os.WriteFile(mainPath, []byte(mainContent), 0644); err != nil {
-					t.Fatalf("Failed to create main.go: %v", err)
-				}
-				return mainPath
-			},
+			name:           "project without go.mod",
+			setupProject:   setupProjectWithoutGoMod,
 			expectedModule: "", // will use directory name as fallback
 			expectError:    false,
 		},
@@ -483,40 +444,20 @@ func main() {}`
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			tmpDir := t.TempDir()
-			entryFile := tc.setupProject(tmpDir)
+			entryFile := tc.setupProject(t, tmpDir)
 
 			analyzer := analyzer.New()
 			graph, err := analyzer.AnalyzeFromFile(entryFile, true, nil)
 
-			if tc.expectError && err == nil {
-				t.Error("Expected error but got none")
-				return
-			}
-			if !tc.expectError && err != nil {
-				t.Fatalf("Unexpected error: %v", err)
-			}
-
-			if err == nil {
-				if tc.expectedModule != "" && graph.ModuleName != tc.expectedModule {
-					t.Errorf("Expected module name '%s', got '%s'", tc.expectedModule, graph.ModuleName)
-				} else if tc.expectedModule == "" && graph.ModuleName == "" {
-					t.Error("Expected non-empty module name when no go.mod present")
-				}
-			}
+			assertTestResults(t, tc.expectError, tc.expectedModule, err, graph)
 		})
 	}
 }
 
 // TestAnalyzeFromFile_PackagePathHandling tests package path logic through black-box approach.
-func TestAnalyzeFromFile_PackagePathHandling(t *testing.T) { //nolint:gocognit
+func TestAnalyzeFromFile_PackagePathHandling(t *testing.T) {
 	tmpDir := t.TempDir()
-
-	// Create go.mod
-	goModContent := "module test/project\n\ngo 1.21\n"
-	goModPath := filepath.Join(tmpDir, "go.mod")
-	if err := os.WriteFile(goModPath, []byte(goModContent), 0644); err != nil {
-		t.Fatalf("Failed to create go.mod: %v", err)
-	}
+	createGoMod(t, tmpDir, "test/project")
 
 	testCases := []struct {
 		name            string
@@ -542,40 +483,52 @@ func TestAnalyzeFromFile_PackagePathHandling(t *testing.T) { //nolint:gocognit
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			var pkgDir string
-			if tc.relativeDir == "" {
-				pkgDir = tmpDir
-			} else {
-				pkgDir = filepath.Join(tmpDir, tc.relativeDir)
-				if err := os.MkdirAll(pkgDir, 0755); err != nil {
-					t.Fatalf("Failed to create package directory: %v", err)
-				}
-			}
-
-			// Create a Go file in the package
-			goContent := `package ` + filepath.Base(pkgDir) + `
-func Test() {}`
-			if tc.relativeDir == "" {
-				goContent = `package main
-func main() {}`
-			}
-			goPath := filepath.Join(pkgDir, "test.go")
-			if err := os.WriteFile(goPath, []byte(goContent), 0644); err != nil {
-				t.Fatalf("Failed to create Go file: %v", err)
-			}
+			goPath := setupPackageTestCase(t, tmpDir, tc.relativeDir)
 
 			analyzer := analyzer.New()
 			graph, err := analyzer.AnalyzeFromFile(goPath, true, nil)
-			if err != nil {
-				t.Fatalf("AnalyzeFromFile failed: %v", err)
-			}
+			require.NoError(t, err, "AnalyzeFromFile failed")
 
-			// Check that the package is in the graph with the expected path
-			if _, exists := graph.Packages[tc.expectedPkgPath]; !exists {
-				t.Errorf("Expected package '%s' not found in graph. Available packages: %v",
-					tc.expectedPkgPath, getPackageNames(graph.Packages))
-			}
+			validatePackageInGraph(t, graph, tc.expectedPkgPath)
 		})
+	}
+}
+
+// setupPackageTestCase creates a package directory and Go file for path handling tests.
+func setupPackageTestCase(t *testing.T, tmpDir, relativeDir string) string {
+	t.Helper()
+
+	var pkgDir string
+	if relativeDir == "" {
+		pkgDir = tmpDir
+	} else {
+		pkgDir = filepath.Join(tmpDir, relativeDir)
+		err := os.MkdirAll(pkgDir, 0755)
+		require.NoError(t, err, "Failed to create package directory")
+	}
+
+	goContent := generateGoFileContent(relativeDir, pkgDir)
+	goPath := filepath.Join(pkgDir, "test.go")
+	createGoFile(t, goPath, goContent)
+	return goPath
+}
+
+// generateGoFileContent creates appropriate Go file content based on the package type.
+func generateGoFileContent(relativeDir, pkgDir string) string {
+	if relativeDir == "" {
+		return `package main
+func main() {}`
+	}
+	return `package ` + filepath.Base(pkgDir) + `
+func Test() {}`
+}
+
+// validatePackageInGraph checks that the expected package exists in the dependency graph.
+func validatePackageInGraph(t *testing.T, graph *analyzer.DependencyGraph, expectedPkgPath string) {
+	t.Helper()
+	if _, exists := graph.Packages[expectedPkgPath]; !exists {
+		t.Errorf("Expected package '%s' not found in graph. Available packages: %v",
+			expectedPkgPath, getPackageNames(graph.Packages))
 	}
 }
 
@@ -588,58 +541,9 @@ func getPackageNames(packages map[string]*analyzer.PackageInfo) []string {
 }
 
 // TestAnalyzeFromFile_ExclusionLogic tests package exclusion through black-box approach.
-func TestAnalyzeFromFile_ExclusionLogic(t *testing.T) { //nolint:gocognit
+func TestAnalyzeFromFile_ExclusionLogic(t *testing.T) {
 	tmpDir := t.TempDir()
-
-	// Create go.mod
-	goModContent := "module test/project\n\ngo 1.21\n"
-	goModPath := filepath.Join(tmpDir, "go.mod")
-	if err := os.WriteFile(goModPath, []byte(goModContent), 0644); err != nil {
-		t.Fatalf("Failed to create go.mod: %v", err)
-	}
-
-	// Create main package that imports vendor and test packages
-	mainContent := `package main
-
-import (
-	"test/project/vendor/pkg"
-	"test/project/internal/test"
-	"test/project/utils"
-	"test/project/vendor"
-)
-
-func main() {
-	pkg.DoSomething()
-	test.RunTest()
-	utils.Helper()
-	vendor.DirectFunc()
-}`
-
-	mainPath := filepath.Join(tmpDir, "main.go")
-	if err := os.WriteFile(mainPath, []byte(mainContent), 0644); err != nil {
-		t.Fatalf("Failed to create main.go: %v", err)
-	}
-
-	// Create packages to be excluded and included
-	packages := map[string]string{
-		"vendor/pkg":    "package pkg\nfunc DoSomething() {}",
-		"vendor":        "package vendor\nfunc DirectFunc() {}",
-		"internal/test": "package test\nfunc RunTest() {}",
-		"utils":         "package utils\nfunc Helper() {}",
-	}
-
-	for pkgPath, content := range packages {
-		pkgDir := filepath.Join(tmpDir, pkgPath)
-		if err := os.MkdirAll(pkgDir, 0755); err != nil {
-			t.Fatalf("Failed to create package directory %s: %v", pkgPath, err)
-		}
-
-		fileName := filepath.Base(pkgPath) + ".go"
-		filePath := filepath.Join(pkgDir, fileName)
-		if err := os.WriteFile(filePath, []byte(content), 0644); err != nil {
-			t.Fatalf("Failed to create package file %s: %v", filePath, err)
-		}
-	}
+	mainPath := setupExclusionTestProject(t, tmpDir)
 
 	testCases := []struct {
 		name          string
@@ -688,97 +592,18 @@ func main() {
 		t.Run(tc.name, func(t *testing.T) {
 			analyzer := analyzer.New()
 			graph, err := analyzer.AnalyzeFromFile(mainPath, true, tc.excludeDirs)
-			if err != nil {
-				t.Fatalf("AnalyzeFromFile failed: %v", err)
-			}
+			require.NoError(t, err, "AnalyzeFromFile failed")
 
-			// Check included packages
-			for _, pkgPath := range tc.shouldInclude {
-				if _, exists := graph.Packages[pkgPath]; !exists {
-					t.Errorf("Expected package '%s' to be included but it was not found", pkgPath)
-				}
-			}
-
-			// Check excluded packages
-			for _, pkgPath := range tc.shouldExclude {
-				if _, exists := graph.Packages[pkgPath]; exists {
-					t.Errorf("Expected package '%s' to be excluded but it was found", pkgPath)
-				}
-			}
+			validateIncludedPackages(t, graph, tc.shouldInclude)
+			validateExcludedPackages(t, graph, tc.shouldExclude)
 		})
 	}
 }
 
 // TestAnalyzeFromFile_WildcardExclusion tests comprehensive wildcard pattern matching.
-func TestAnalyzeFromFile_WildcardExclusion(t *testing.T) { //nolint:gocognit
+func TestAnalyzeFromFile_WildcardExclusion(t *testing.T) {
 	tmpDir := t.TempDir()
-
-	// Create go.mod
-	goModContent := "module test/wildcards\n\ngo 1.21\n"
-	goModPath := filepath.Join(tmpDir, "go.mod")
-	if err := os.WriteFile(goModPath, []byte(goModContent), 0644); err != nil {
-		t.Fatalf("Failed to create go.mod: %v", err)
-	}
-
-	// Create main package that imports various test packages
-	mainContent := `package main
-
-import (
-	"test/wildcards/internal/auth"
-	"test/wildcards/internal/db"
-	"test/wildcards/pkg/utils"
-	"test/wildcards/pkg/helpers"
-	"test/wildcards/vendor/lib1"
-	"test/wildcards/vendor/lib2"
-	"test/wildcards/shared"
-	"test/wildcards/test/unit"
-	"test/wildcards/test/integration"
-)
-
-func main() {
-	auth.Login()
-	db.Connect()
-	utils.DoWork()
-	helpers.Assist()
-	lib1.External()
-	lib2.Other()
-	shared.Common()
-	unit.TestFunc()
-	integration.IntegrationTest()
-}`
-
-	mainPath := filepath.Join(tmpDir, "main.go")
-	if err := os.WriteFile(mainPath, []byte(mainContent), 0644); err != nil {
-		t.Fatalf("Failed to create main.go: %v", err)
-	}
-
-	// Create all packages
-	packages := []string{
-		"internal/auth",
-		"internal/db",
-		"pkg/utils",
-		"pkg/helpers",
-		"vendor/lib1",
-		"vendor/lib2",
-		"shared",
-		"test/unit",
-		"test/integration",
-	}
-
-	for _, pkgPath := range packages {
-		pkgDir := filepath.Join(tmpDir, pkgPath)
-		if err := os.MkdirAll(pkgDir, 0755); err != nil {
-			t.Fatalf("Failed to create package directory %s: %v", pkgPath, err)
-		}
-
-		fileName := filepath.Base(pkgPath) + ".go"
-		pkgName := filepath.Base(pkgPath)
-		content := fmt.Sprintf("package %s\nfunc SomeFunc() {}", pkgName)
-		filePath := filepath.Join(pkgDir, fileName)
-		if err := os.WriteFile(filePath, []byte(content), 0644); err != nil {
-			t.Fatalf("Failed to create package file %s: %v", filePath, err)
-		}
-	}
+	mainPath := setupWildcardTestProject(t, tmpDir, "test/wildcards")
 
 	testCases := []struct {
 		name           string
@@ -838,177 +663,30 @@ func main() {
 		t.Run(tc.name, func(t *testing.T) {
 			analyzer := analyzer.New()
 			graph, err := analyzer.AnalyzeFromFile(mainPath, true, []string{tc.excludePattern})
-			if err != nil {
-				t.Fatalf("AnalyzeFromFile failed: %v", err)
-			}
+			require.NoError(t, err, "AnalyzeFromFile failed")
 
-			// Check included packages
-			for _, pkgPath := range tc.shouldInclude {
-				if _, exists := graph.Packages[pkgPath]; !exists {
-					t.Errorf("Expected package '%s' to be included but it was not found", pkgPath)
-				}
-			}
-
-			// Check excluded packages
-			for _, pkgPath := range tc.shouldExclude {
-				if _, exists := graph.Packages[pkgPath]; exists {
-					t.Errorf("Expected package '%s' to be excluded but it was found", pkgPath)
-				}
-			}
+			validateIncludedPackages(t, graph, tc.shouldInclude)
+			validateExcludedPackages(t, graph, tc.shouldExclude)
 		})
 	}
 }
 
 // TestAnalyzeFromFile_LayerCalculation tests layer organization through black-box approach.
-func TestAnalyzeFromFile_LayerCalculation(t *testing.T) { //nolint:gocognit
+func TestAnalyzeFromFile_LayerCalculation(t *testing.T) {
 	tmpDir := t.TempDir()
-
-	// Create go.mod
-	goModContent := "module test/layers\n\ngo 1.21\n"
-	goModPath := filepath.Join(tmpDir, "go.mod")
-	if err := os.WriteFile(goModPath, []byte(goModContent), 0644); err != nil {
-		t.Fatalf("Failed to create go.mod: %v", err)
-	}
-
-	// Create a dependency hierarchy: main -> middleware -> util
-	packages := map[string]string{
-		"main.go": `package main
-
-import "test/layers/middleware"
-
-func main() {
-	middleware.Process()
-}`,
-		"middleware/middleware.go": `package middleware
-
-import "test/layers/util"
-
-func Process() {
-	util.Helper()
-}`,
-		"util/util.go": `package util
-
-func Helper() {}`,
-	}
-
-	for filePath, content := range packages {
-		fullPath := filepath.Join(tmpDir, filePath)
-		dir := filepath.Dir(fullPath)
-		if err := os.MkdirAll(dir, 0755); err != nil {
-			t.Fatalf("Failed to create directory %s: %v", dir, err)
-		}
-		if err := os.WriteFile(fullPath, []byte(content), 0644); err != nil {
-			t.Fatalf("Failed to create file %s: %v", fullPath, err)
-		}
-	}
+	mainPath := setupLayerTestProject(t, tmpDir)
 
 	analyzer := analyzer.New()
-	graph, err := analyzer.AnalyzeFromFile(filepath.Join(tmpDir, "main.go"), true, nil)
-	if err != nil {
-		t.Fatalf("AnalyzeFromFile failed: %v", err)
-	}
+	graph, err := analyzer.AnalyzeFromFile(mainPath, true, nil)
+	require.NoError(t, err, "AnalyzeFromFile failed")
 
-	// Verify layers are calculated
-	if len(graph.Layers) == 0 {
-		t.Error("Expected layers to be calculated, but got empty layers")
-	}
-
-	// Verify all packages are assigned to layers
-	packageInLayers := make(map[string]bool)
-	for _, layer := range graph.Layers {
-		for _, pkg := range layer {
-			packageInLayers[pkg] = true
-		}
-	}
-
-	expectedPackages := []string{
-		"test/layers",
-		"test/layers/middleware",
-		"test/layers/util",
-	}
-
-	for _, expectedPkg := range expectedPackages {
-		if !packageInLayers[expectedPkg] {
-			t.Errorf("Package %s not found in any layer", expectedPkg)
-		}
-	}
-
-	// Verify layer structure makes sense (packages with dependencies should be in higher layers)
-	utilLayer := -1
-	middlewareLayer := -1
-	mainLayer := -1
-
-	for i, layer := range graph.Layers {
-		for _, pkg := range layer {
-			switch pkg {
-			case "test/layers/util":
-				utilLayer = i
-			case "test/layers/middleware":
-				middlewareLayer = i
-			case "test/layers":
-				mainLayer = i
-			}
-		}
-	}
-
-	// Basic layer ordering validation - packages with more dependencies tend to be in higher layers
-	if utilLayer < 0 || middlewareLayer < 0 || mainLayer < 0 {
-		t.Error("Not all packages were assigned to layers")
-	}
+	validateLayerStructure(t, graph)
 }
 
 // TestAnalyzeFromFile_WildcardEdgeCases tests edge cases for wildcard pattern matching.
-func TestAnalyzeFromFile_WildcardEdgeCases(t *testing.T) { //nolint:gocognit
+func TestAnalyzeFromFile_WildcardEdgeCases(t *testing.T) {
 	tmpDir := t.TempDir()
-
-	// Create go.mod
-	goModContent := "module test/edge\n\ngo 1.21\n"
-	goModPath := filepath.Join(tmpDir, "go.mod")
-	if err := os.WriteFile(goModPath, []byte(goModContent), 0644); err != nil {
-		t.Fatalf("Failed to create go.mod: %v", err)
-	}
-
-	// Create main package that imports various packages
-	mainContent := `package main
-
-import (
-	"test/edge/a"
-	"test/edge/ab"
-	"test/edge/abc"
-	"test/edge/test"
-	"test/edge/testing"
-	"test/edge/empty"
-)
-
-func main() {
-	a.F()
-	ab.F()
-	abc.F()
-	test.F()
-	testing.F()
-	empty.F()
-}`
-
-	mainPath := filepath.Join(tmpDir, "main.go")
-	if err := os.WriteFile(mainPath, []byte(mainContent), 0644); err != nil {
-		t.Fatalf("Failed to create main.go: %v", err)
-	}
-
-	// Create all packages
-	packages := []string{"a", "ab", "abc", "test", "testing", "empty"}
-
-	for _, pkgPath := range packages {
-		pkgDir := filepath.Join(tmpDir, pkgPath)
-		if err := os.MkdirAll(pkgDir, 0755); err != nil {
-			t.Fatalf("Failed to create package directory %s: %v", pkgPath, err)
-		}
-
-		content := fmt.Sprintf("package %s\nfunc F() {}", pkgPath)
-		filePath := filepath.Join(pkgDir, pkgPath+".go")
-		if err := os.WriteFile(filePath, []byte(content), 0644); err != nil {
-			t.Fatalf("Failed to create package file %s: %v", filePath, err)
-		}
-	}
+	mainPath := setupEdgeCaseTestProject(t, tmpDir)
 
 	testCases := []struct {
 		name           string
@@ -1064,152 +742,488 @@ func main() {
 		t.Run(tc.name, func(t *testing.T) {
 			analyzer := analyzer.New()
 			graph, err := analyzer.AnalyzeFromFile(mainPath, true, []string{tc.excludePattern})
-			if err != nil {
-				t.Fatalf("AnalyzeFromFile failed: %v", err)
-			}
+			require.NoError(t, err, "AnalyzeFromFile failed")
 
-			// Check included packages
-			for _, pkgPath := range tc.shouldInclude {
-				if _, exists := graph.Packages[pkgPath]; !exists {
-					t.Errorf("Expected package '%s' to be included but it was not found", pkgPath)
-				}
-			}
-
-			// Check excluded packages
-			for _, pkgPath := range tc.shouldExclude {
-				if _, exists := graph.Packages[pkgPath]; exists {
-					t.Errorf("Expected package '%s' to be excluded but it was found", pkgPath)
-				}
-			}
+			validateIncludedPackages(t, graph, tc.shouldInclude)
+			validateExcludedPackages(t, graph, tc.shouldExclude)
 		})
 	}
 }
 
 // TestAnalyzeMultipleEntryPoints_Monorepo tests analysis of multiple entry points in a monorepo structure.
-func TestAnalyzeMultipleEntryPoints_Monorepo(t *testing.T) { //nolint:gocognit
-	tmpDir := t.TempDir()
+// TestAnalyzeMultipleEntryPoints_Monorepo tests analysis of multiple entry points in a monorepo structure.
 
-	// Create a monorepo structure with multiple subprojects
-	// Each subproject has its own go.mod and dependencies
+// Helper functions for test project setup
 
-	// Subproject A: service-a
-	serviceADir := filepath.Join(tmpDir, "service-a")
-	if err := os.MkdirAll(serviceADir, 0755); err != nil {
-		t.Fatalf("Failed to create service-a directory: %v", err)
+// createGoMod creates a go.mod file with the specified module name.
+func createGoMod(t *testing.T, dir, moduleName string) {
+	t.Helper()
+	content := fmt.Sprintf("module %s\n\ngo 1.21\n", moduleName)
+	path := filepath.Join(dir, "go.mod")
+	err := os.WriteFile(path, []byte(content), 0644)
+	require.NoError(t, err, "Failed to create go.mod")
+}
+
+// createGoFile creates a Go file with the specified content.
+func createGoFile(t *testing.T, path, content string) {
+	t.Helper()
+	err := os.WriteFile(path, []byte(content), 0644)
+	require.NoError(t, err, "Failed to create Go file")
+}
+
+// createNestedPackage creates a nested package directory and Go file.
+func createNestedPackage(t *testing.T, baseDir, pkgPath, content string) string {
+	t.Helper()
+	fullPkgDir := filepath.Join(baseDir, pkgPath)
+	err := os.MkdirAll(fullPkgDir, 0755)
+	require.NoError(t, err, "Failed to create package directory")
+
+	fileName := fmt.Sprintf("%s.go", filepath.Base(pkgPath))
+	filePath := filepath.Join(fullPkgDir, fileName)
+	createGoFile(t, filePath, content)
+	return filePath
+}
+
+// setupProjectWithGoMod creates a simple project with go.mod and main.go.
+func setupProjectWithGoMod(t *testing.T, tmpDir, moduleName string) string {
+	t.Helper()
+	createGoMod(t, tmpDir, moduleName)
+
+	mainContent := `package main
+func main() {}`
+	mainPath := filepath.Join(tmpDir, "main.go")
+	createGoFile(t, mainPath, mainContent)
+	return mainPath
+}
+
+// setupNestedPackageProject creates a project with go.mod and a nested package.
+func setupNestedPackageProject(t *testing.T, tmpDir, moduleName string) string {
+	t.Helper()
+	createGoMod(t, tmpDir, moduleName)
+
+	handlerContent := `package handler
+func Handle() {}`
+	return createNestedPackage(t, tmpDir, "internal/handler", handlerContent)
+}
+
+// setupProjectWithoutGoMod creates a project with only main.go (no go.mod).
+func setupProjectWithoutGoMod(t *testing.T, tmpDir string) string {
+	t.Helper()
+	mainContent := `package main
+func main() {}`
+	mainPath := filepath.Join(tmpDir, "main.go")
+	createGoFile(t, mainPath, mainContent)
+	return mainPath
+}
+
+// assertTestResults validates the test results and performs necessary assertions.
+func assertTestResults(
+	t *testing.T,
+	expectError bool,
+	expectedModule string,
+	err error,
+	graph *analyzer.DependencyGraph,
+) {
+	t.Helper()
+
+	if expectError && err == nil {
+		t.Error("Expected error but got none")
+		return
+	}
+	if !expectError && err != nil {
+		t.Fatalf("Unexpected error: %v", err)
 	}
 
-	// Create go.mod for service-a
-	goModAContent := "module github.com/test/service-a\n\ngo 1.21\n"
-	if err := os.WriteFile(filepath.Join(serviceADir, "go.mod"), []byte(goModAContent), 0644); err != nil {
-		t.Fatalf("Failed to create go.mod for service-a: %v", err)
+	if err == nil {
+		if expectedModule != "" && graph.ModuleName != expectedModule {
+			t.Errorf("Expected module name '%s', got '%s'", expectedModule, graph.ModuleName)
+		} else if expectedModule == "" && graph.ModuleName == "" {
+			t.Error("Expected non-empty module name when no go.mod present")
+		}
+	}
+}
+
+// createPackageSet creates a set of packages with their content files.
+func createPackageSet(t *testing.T, baseDir string, packages map[string]string) {
+	t.Helper()
+	for pkgPath, content := range packages {
+		pkgDir := filepath.Join(baseDir, pkgPath)
+		err := os.MkdirAll(pkgDir, 0755)
+		require.NoError(t, err, "Failed to create package directory %s", pkgPath)
+
+		fileName := filepath.Base(pkgPath) + ".go"
+		filePath := filepath.Join(pkgDir, fileName)
+		createGoFile(t, filePath, content)
+	}
+}
+
+// setupExclusionTestProject creates a test project for exclusion logic testing.
+func setupExclusionTestProject(t *testing.T, tmpDir string) string {
+	t.Helper()
+
+	// Create go.mod
+	createGoMod(t, tmpDir, "test/project")
+
+	// Create main package with imports
+	mainContent := `package main
+
+import (
+	"test/project/vendor/pkg"
+	"test/project/internal/test"
+	"test/project/utils"
+	"test/project/vendor"
+)
+
+func main() {
+	pkg.DoSomething()
+	test.RunTest()
+	utils.Helper()
+	vendor.DirectFunc()
+}`
+
+	mainPath := filepath.Join(tmpDir, "main.go")
+	createGoFile(t, mainPath, mainContent)
+
+	// Create packages to be excluded and included
+	packages := map[string]string{
+		"vendor/pkg":    "package pkg\nfunc DoSomething() {}",
+		"vendor":        "package vendor\nfunc DirectFunc() {}",
+		"internal/test": "package test\nfunc RunTest() {}",
+		"utils":         "package utils\nfunc Helper() {}",
+	}
+	createPackageSet(t, tmpDir, packages)
+
+	return mainPath
+}
+
+// validateIncludedPackages checks that expected packages are present in the graph.
+func validateIncludedPackages(t *testing.T, graph *analyzer.DependencyGraph, expectedPackages []string) {
+	t.Helper()
+	for _, pkgPath := range expectedPackages {
+		if _, exists := graph.Packages[pkgPath]; !exists {
+			t.Errorf("Expected package '%s' to be included but it was not found", pkgPath)
+		}
+	}
+}
+
+// validateExcludedPackages checks that packages are properly excluded from the graph.
+func validateExcludedPackages(t *testing.T, graph *analyzer.DependencyGraph, excludedPackages []string) {
+	t.Helper()
+	for _, pkgPath := range excludedPackages {
+		if _, exists := graph.Packages[pkgPath]; exists {
+			t.Errorf("Expected package '%s' to be excluded but it was found", pkgPath)
+		}
+	}
+}
+
+// createSimplePackageList creates a list of simple packages with basic content.
+func createSimplePackageList(t *testing.T, baseDir string, packages []string) {
+	t.Helper()
+	for _, pkgPath := range packages {
+		pkgDir := filepath.Join(baseDir, pkgPath)
+		err := os.MkdirAll(pkgDir, 0755)
+		require.NoError(t, err, "Failed to create package directory %s", pkgPath)
+
+		fileName := filepath.Base(pkgPath) + ".go"
+		pkgName := filepath.Base(pkgPath)
+		content := fmt.Sprintf("package %s\nfunc SomeFunc() {}", pkgName)
+		filePath := filepath.Join(pkgDir, fileName)
+		createGoFile(t, filePath, content)
+	}
+}
+
+// setupWildcardTestProject creates a test project for wildcard exclusion testing.
+func setupWildcardTestProject(t *testing.T, tmpDir, moduleName string) string {
+	t.Helper()
+
+	// Create go.mod
+	createGoMod(t, tmpDir, moduleName)
+
+	// Create main package with comprehensive imports
+	mainContent := `package main
+
+import (
+	"` + moduleName + `/internal/auth"
+	"` + moduleName + `/internal/db"
+	"` + moduleName + `/pkg/utils"
+	"` + moduleName + `/pkg/helpers"
+	"` + moduleName + `/vendor/lib1"
+	"` + moduleName + `/vendor/lib2"
+	"` + moduleName + `/shared"
+	"` + moduleName + `/test/unit"
+	"` + moduleName + `/test/integration"
+)
+
+func main() {
+	auth.Login()
+	db.Connect()
+	utils.DoWork()
+	helpers.Assist()
+	lib1.External()
+	lib2.Other()
+	shared.Common()
+	unit.TestFunc()
+	integration.IntegrationTest()
+}`
+
+	mainPath := filepath.Join(tmpDir, "main.go")
+	createGoFile(t, mainPath, mainContent)
+
+	// Create all packages
+	packages := []string{
+		"internal/auth",
+		"internal/db",
+		"pkg/utils",
+		"pkg/helpers",
+		"vendor/lib1",
+		"vendor/lib2",
+		"shared",
+		"test/unit",
+		"test/integration",
+	}
+	createSimplePackageList(t, tmpDir, packages)
+
+	return mainPath
+}
+
+// setupEdgeCaseTestProject creates a test project for edge case wildcard testing.
+func setupEdgeCaseTestProject(t *testing.T, tmpDir string) string {
+	t.Helper()
+
+	// Create go.mod
+	createGoMod(t, tmpDir, "test/edge")
+
+	// Create main package with specific imports for edge case testing
+	mainContent := `package main
+
+import (
+	"test/edge/a"
+	"test/edge/ab"
+	"test/edge/abc"
+	"test/edge/test"
+	"test/edge/testing"
+	"test/edge/empty"
+)
+
+func main() {
+	a.F()
+	ab.F()
+	abc.F()
+	test.F()
+	testing.F()
+	empty.F()
+}`
+
+	mainPath := filepath.Join(tmpDir, "main.go")
+	createGoFile(t, mainPath, mainContent)
+
+	// Create edge case packages with specific naming
+	packages := []string{"a", "ab", "abc", "test", "testing", "empty"}
+	for _, pkgPath := range packages {
+		pkgDir := filepath.Join(tmpDir, pkgPath)
+		err := os.MkdirAll(pkgDir, 0755)
+		require.NoError(t, err, "Failed to create package directory %s", pkgPath)
+
+		content := fmt.Sprintf("package %s\nfunc F() {}", pkgPath)
+		filePath := filepath.Join(pkgDir, pkgPath+".go")
+		createGoFile(t, filePath, content)
 	}
 
-	// Create internal/handler package in service-a
-	handlerADir := filepath.Join(serviceADir, "internal", "handler")
-	if err := os.MkdirAll(handlerADir, 0755); err != nil {
-		t.Fatalf("Failed to create internal/handler directory for service-a: %v", err)
+	return mainPath
+}
+
+// setupLayerTestProject creates a test project with a clear dependency hierarchy.
+func setupLayerTestProject(t *testing.T, tmpDir string) string {
+	t.Helper()
+
+	// Create go.mod
+	createGoMod(t, tmpDir, "test/layers")
+
+	// Create packages with clear dependency hierarchy: main -> middleware -> util
+	packages := map[string]string{
+		"main.go": `package main
+
+import "test/layers/middleware"
+
+func main() {
+	middleware.Process()
+}`,
+		"middleware/middleware.go": `package middleware
+
+import "test/layers/util"
+
+func Process() {
+	util.Helper()
+}`,
+		"util/util.go": `package util
+
+func Helper() {}`,
 	}
 
-	handlerAContent := `package handler
+	for filePath, content := range packages {
+		fullPath := filepath.Join(tmpDir, filePath)
+		dir := filepath.Dir(fullPath)
+		err := os.MkdirAll(dir, 0755)
+		require.NoError(t, err, "Failed to create directory %s", dir)
+		createGoFile(t, fullPath, content)
+	}
 
-import "github.com/test/service-a/internal/service"
+	return filepath.Join(tmpDir, "main.go")
+}
+
+// validateLayerStructure validates that the layer structure makes sense for dependencies.
+func validateLayerStructure(t *testing.T, graph *analyzer.DependencyGraph) {
+	t.Helper()
+
+	// Verify layers are calculated
+	if len(graph.Layers) == 0 {
+		t.Error("Expected layers to be calculated, but got empty layers")
+		return
+	}
+
+	// Verify all packages are assigned to layers
+	packageInLayers := make(map[string]bool)
+	for _, layer := range graph.Layers {
+		for _, pkg := range layer {
+			packageInLayers[pkg] = true
+		}
+	}
+
+	expectedPackages := []string{
+		"test/layers",
+		"test/layers/middleware",
+		"test/layers/util",
+	}
+
+	for _, expectedPkg := range expectedPackages {
+		if !packageInLayers[expectedPkg] {
+			t.Errorf("Package %s not found in any layer", expectedPkg)
+		}
+	}
+
+	// Find layer assignments for validation
+	layers := make(map[string]int)
+	for i, layer := range graph.Layers {
+		for _, pkg := range layer {
+			layers[pkg] = i
+		}
+	}
+
+	// Verify basic layer ordering
+	utilLayer, utilExists := layers["test/layers/util"]
+	middlewareLayer, middlewareExists := layers["test/layers/middleware"]
+	mainLayer, mainExists := layers["test/layers"]
+
+	if !utilExists || !middlewareExists || !mainExists {
+		t.Error("Not all packages were assigned to layers")
+	}
+
+	// Basic sanity check - we have at least the expected packages
+	_ = utilLayer
+	_ = middlewareLayer
+	_ = mainLayer
+}
+
+// createMonorepoService creates a complete service structure for monorepo testing.
+func createMonorepoService(t *testing.T, baseDir, serviceName, moduleName, serviceType string) {
+	t.Helper()
+
+	serviceDir := filepath.Join(baseDir, serviceName)
+	err := os.MkdirAll(serviceDir, 0755)
+	require.NoError(t, err, "Failed to create service directory")
+
+	createGoMod(t, serviceDir, moduleName)
+
+	switch serviceType {
+	case "complex":
+		createComplexService(t, serviceDir, moduleName)
+	case "simple":
+		createSimpleService(t, serviceDir, moduleName)
+	default:
+		t.Fatalf("Unknown service type: %s", serviceType)
+	}
+}
+
+// createComplexService creates a service with internal packages (handler, service).
+func createComplexService(t *testing.T, serviceDir, moduleName string) {
+	t.Helper()
+
+	// Create internal/handler package
+	handlerDir := filepath.Join(serviceDir, "internal", "handler")
+	err := os.MkdirAll(handlerDir, 0755)
+	require.NoError(t, err, "Failed to create handler directory")
+
+	handlerContent := fmt.Sprintf(`package handler
+
+import "%s/internal/service"
 
 func HandleRequest() {
 	service.ProcessRequest()
 }
-`
-	if err := os.WriteFile(filepath.Join(handlerADir, "handler.go"), []byte(handlerAContent), 0644); err != nil {
-		t.Fatalf("Failed to create handler.go for service-a: %v", err)
-	}
+`, moduleName)
+	createGoFile(t, filepath.Join(handlerDir, "handler.go"), handlerContent)
 
-	// Create internal/service package in service-a
-	serviceAServiceDir := filepath.Join(serviceADir, "internal", "service")
-	if err := os.MkdirAll(serviceAServiceDir, 0755); err != nil {
-		t.Fatalf("Failed to create internal/service directory for service-a: %v", err)
-	}
+	// Create internal/service package
+	servicePackageDir := filepath.Join(serviceDir, "internal", "service")
+	err = os.MkdirAll(servicePackageDir, 0755)
+	require.NoError(t, err, "Failed to create service package directory")
 
-	serviceAContent := `package service
+	serviceContent := `package service
 
 func ProcessRequest() {
 	// Business logic
 }
 `
-	if err := os.WriteFile(filepath.Join(serviceAServiceDir, "service.go"), []byte(serviceAContent), 0644); err != nil {
-		t.Fatalf("Failed to create service.go for service-a: %v", err)
-	}
+	createGoFile(t, filepath.Join(servicePackageDir, "service.go"), serviceContent)
 
-	// Create main.go for service-a
-	mainAContent := `package main
+	// Create main.go
+	mainContent := fmt.Sprintf(`package main
 
-import "github.com/test/service-a/internal/handler"
+import "%s/internal/handler"
 
 func main() {
 	handler.HandleRequest()
 }
-`
-	if err := os.WriteFile(filepath.Join(serviceADir, "main.go"), []byte(mainAContent), 0644); err != nil {
-		t.Fatalf("Failed to create main.go for service-a: %v", err)
-	}
+`, moduleName)
+	createGoFile(t, filepath.Join(serviceDir, "main.go"), mainContent)
+}
 
-	// Subproject B: service-b
-	serviceBDir := filepath.Join(tmpDir, "service-b")
-	if err := os.MkdirAll(serviceBDir, 0755); err != nil {
-		t.Fatalf("Failed to create service-b directory: %v", err)
-	}
+// createSimpleService creates a service with just utils and main.
+func createSimpleService(t *testing.T, serviceDir, moduleName string) {
+	t.Helper()
 
-	// Create go.mod for service-b
-	goModBContent := "module github.com/test/service-b\n\ngo 1.21\n"
-	if err := os.WriteFile(filepath.Join(serviceBDir, "go.mod"), []byte(goModBContent), 0644); err != nil {
-		t.Fatalf("Failed to create go.mod for service-b: %v", err)
-	}
+	// Create utils package
+	utilsDir := filepath.Join(serviceDir, "utils")
+	err := os.MkdirAll(utilsDir, 0755)
+	require.NoError(t, err, "Failed to create utils directory")
 
-	// Create utils package in service-b
-	utilsBDir := filepath.Join(serviceBDir, "utils")
-	if err := os.MkdirAll(utilsBDir, 0755); err != nil {
-		t.Fatalf("Failed to create utils directory for service-b: %v", err)
-	}
-
-	utilsBContent := `package utils
+	utilsContent := `package utils
 
 func FormatData() string {
 	return "formatted"
 }
 `
-	if err := os.WriteFile(filepath.Join(utilsBDir, "utils.go"), []byte(utilsBContent), 0644); err != nil {
-		t.Fatalf("Failed to create utils.go for service-b: %v", err)
-	}
+	createGoFile(t, filepath.Join(utilsDir, "utils.go"), utilsContent)
 
-	// Create main.go for service-b
-	mainBContent := `package main
+	// Create main.go
+	mainContent := fmt.Sprintf(`package main
 
-import "github.com/test/service-b/utils"
+import "%s/utils"
 
 func main() {
 	utils.FormatData()
 }
-`
-	if err := os.WriteFile(filepath.Join(serviceBDir, "main.go"), []byte(mainBContent), 0644); err != nil {
-		t.Fatalf("Failed to create main.go for service-b: %v", err)
-	}
+`, moduleName)
+	createGoFile(t, filepath.Join(serviceDir, "main.go"), mainContent)
+}
 
-	// Test: Analyze multiple entry points in the monorepo
-	a := analyzer.New()
-	result, err := a.AnalyzeMultipleEntryPoints(tmpDir, true, nil)
+// validateMonorepoResults validates the results of monorepo analysis.
+func validateMonorepoResults(t *testing.T, result *analyzer.MultiEntryAnalysisResult) {
+	t.Helper()
 
-	if err != nil {
-		t.Fatalf("AnalyzeMultipleEntryPoints failed: %v", err)
-	}
+	require.True(t, result.Success, "Analysis failed: %s", result.Error)
+	require.Len(t, result.EntryPoints, 2, "Expected 2 entry points")
 
-	if !result.Success {
-		t.Fatalf("Analysis failed: %s", result.Error)
-	}
-
-	// Should find 2 entry points
-	if len(result.EntryPoints) != 2 {
-		t.Fatalf("Expected 2 entry points, got %d", len(result.EntryPoints))
-	}
-
-	// Verify each entry point has its correct module and dependencies
 	entryPointsByModule := make(map[string]*analyzer.EntryPoint)
 	for i := range result.EntryPoints {
 		ep := &result.EntryPoints[i]
@@ -1218,27 +1232,47 @@ func main() {
 		}
 	}
 
-	// Check service-a
+	validateServiceA(t, entryPointsByModule)
+	validateServiceB(t, entryPointsByModule)
+}
+
+// validateServiceA validates service-a structure and packages.
+func validateServiceA(t *testing.T, entryPointsByModule map[string]*analyzer.EntryPoint) {
+	t.Helper()
+
 	serviceA := entryPointsByModule["github.com/test/service-a"]
-	if serviceA == nil {
-		t.Fatal("service-a entry point not found or has no graph")
-	}
+	require.NotNil(t, serviceA, "service-a entry point not found or has no graph")
 
 	// service-a should have 3 packages: main, internal/handler, internal/service
-	if len(serviceA.Graph.Packages) != 3 {
-		t.Errorf("service-a should have 3 packages, got %d: %v",
-			len(serviceA.Graph.Packages), getPackageNames(serviceA.Graph.Packages))
-	}
+	assert.Len(t, serviceA.Graph.Packages, 3,
+		"service-a should have 3 packages, got %d: %v",
+		len(serviceA.Graph.Packages), getPackageNames(serviceA.Graph.Packages))
+}
 
-	// Check service-b
+// validateServiceB validates service-b structure and packages.
+func validateServiceB(t *testing.T, entryPointsByModule map[string]*analyzer.EntryPoint) {
+	t.Helper()
+
 	serviceB := entryPointsByModule["github.com/test/service-b"]
-	if serviceB == nil {
-		t.Fatal("service-b entry point not found or has no graph")
-	}
+	require.NotNil(t, serviceB, "service-b entry point not found or has no graph")
 
 	// service-b should have 2 packages: main, utils
-	if len(serviceB.Graph.Packages) != 2 {
-		t.Errorf("service-b should have 2 packages, got %d: %v",
-			len(serviceB.Graph.Packages), getPackageNames(serviceB.Graph.Packages))
-	}
+	assert.Len(t, serviceB.Graph.Packages, 2,
+		"service-b should have 2 packages, got %d: %v",
+		len(serviceB.Graph.Packages), getPackageNames(serviceB.Graph.Packages))
+}
+
+func TestAnalyzeMultipleEntryPoints_Monorepo(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Create monorepo structure with multiple subprojects
+	createMonorepoService(t, tmpDir, "service-a", "github.com/test/service-a", "complex")
+	createMonorepoService(t, tmpDir, "service-b", "github.com/test/service-b", "simple")
+
+	// Test: Analyze multiple entry points in the monorepo
+	a := analyzer.New()
+	result, err := a.AnalyzeMultipleEntryPoints(tmpDir, true, nil)
+	require.NoError(t, err, "AnalyzeMultipleEntryPoints failed")
+
+	validateMonorepoResults(t, result)
 }
