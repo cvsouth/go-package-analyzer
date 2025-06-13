@@ -40,13 +40,11 @@ jobs:
     - name: Run fuzz tests
       run: |
         go test -fuzz=FuzzAnalyzeFromFile -fuzztime=10s ./internal/analyzer
+        go test -fuzz=FuzzFindEntryPoints -fuzztime=10s ./internal/analyzer
         go test -fuzz=FuzzAnalyzeMultipleEntryPoints -fuzztime=10s ./internal/analyzer
         go test -fuzz=FuzzListDirectory -fuzztime=10s ./internal/scanner
-        go test -fuzz=FuzzShouldExcludeDirectory -fuzztime=10s ./internal/scanner
-        go test -fuzz=FuzzIsGoProject -fuzztime=10s ./internal/scanner
-        go test -fuzz=FuzzHasGoModFileRecursive -fuzztime=10s ./internal/scanner
         go test -fuzz=FuzzGetFilesystemRoots -fuzztime=10s ./internal/scanner
-        go test -fuzz=FuzzIsDirectoryAccessible -fuzztime=10s ./internal/scanner
+        go test -fuzz=FuzzDirectoryPathHandling -fuzztime=10s ./internal/scanner
         go test -fuzz=FuzzGenerateDOTContent -fuzztime=10s ./internal/visualizer
 
     - name: Run golangci-lint

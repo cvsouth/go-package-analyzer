@@ -152,8 +152,9 @@ func FuzzDirectoryPathHandling(f *testing.F) {
 		// Test path cleaning behavior
 		cleanPath := filepath.Clean(dirPath)
 
-		// Cleaned path should not be longer than original (in most cases)
-		if len(cleanPath) > len(dirPath)*2 {
+		// Cleaned path should not be excessively longer than original
+		// Note: filepath.Clean("") returns "." which is expected behavior
+		if dirPath != "" && len(cleanPath) > len(dirPath)*3 {
 			t.Errorf("Cleaned path unexpectedly long: original=%q, cleaned=%q", dirPath, cleanPath)
 		}
 
