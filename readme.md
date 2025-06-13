@@ -3,6 +3,7 @@
 ![GitHub go.mod Go version](https://img.shields.io/github/go-mod/go-version/cvsouth/go-package-analyzer)
 [![Tests](https://github.com/cvsouth/go-package-analyzer/actions/workflows/test.yml/badge.svg)](https://github.com/cvsouth/go-package-analyzer/actions/workflows/test.yml)
 [![Go Report Card](https://goreportcard.com/badge/github.com/cvsouth/go-package-analyzer)](https://goreportcard.com/report/github.com/cvsouth/go-package-analyzer)
+[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/cvsouth/go-package-analyzer/badge)](https://scorecard.dev/viewer/?uri=github.com/cvsouth/go-package-analyzer)
 
 A simple tool to analyze and visualize Go package dependencies.
 
