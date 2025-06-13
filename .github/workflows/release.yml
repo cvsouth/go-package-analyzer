@@ -2,113 +2,85 @@ name: Release
 
 on:
   push:
-    branches:
-      - main  # Change this to your default branch if different
+    tags:
+      - 'v*'
+
+# Declare default permissions as read only.
+permissions: read-all
 
 jobs:
-  release:
+  build:
     runs-on: ubuntu-latest
     permissions:
-      contents: write
-    
+      contents: write  # Required to create releases and upload artifacts
+      pull-requests: read  # Required to read pull request information
+    outputs:
+      hashes: ${{ steps.hash.outputs.hashes }}
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-      with:
-        fetch-depth: 0
+      - name: Checkout code
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          fetch-depth: 0
 
-    - name: Set up Go
-      uses: actions/setup-go@v5
-      with:
-        go-version: '1.24'
-        cache: true
+      - name: Set up Go
+        uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
+        with:
+          go-version-file: 'go.mod'
 
-    - name: Get next version number
-      id: version
-      run: |
-        # Read major.minor version from version file and normalize across platforms
-        # Handle Windows (CRLF), Unix (LF), and Mac line endings, plus any whitespace
-        base_version=$(cat version | tr -d '\000-\037\177-\377' | tr -d '\n\r\t ' | sed 's/^[[:space:]]*//' | sed 's/[[:space:]]*$//')
-        echo "Base version from file: '$base_version'"
-        echo "Base version length: ${#base_version}"
-        
-        # Validate that base_version is not empty and has correct format
-        if [ -z "$base_version" ]; then
-          echo "Error: version file is empty or not found"
-          exit 1
-        fi
-        
-        # Validate version format (should be like "1.0", "2.3", etc.)
-        if ! echo "$base_version" | grep -E '^[0-9]+\.[0-9]+$' > /dev/null; then
-          echo "Error: version file must contain format like '1.0' or '2.3', got: '$base_version'"
-          exit 1
-        fi
-        
-        # Get the latest release tag that matches this base version
-        latest_tag=$(git tag -l --sort=-version:refname "v${base_version}.*" | head -n 1)
-        echo "Latest matching tag: '$latest_tag'"
-        
-        if [ -z "$latest_tag" ]; then
-          # No tags exist for this base version, start with patch version 0
-          next_patch=0
-          echo "No existing tags found for base version $base_version, starting with patch 0"
-        else
-          # Extract patch version from tag (e.g., v1.0.5 -> 5)
-          current_patch=$(echo "$latest_tag" | sed "s/v${base_version}\.//")
-          next_patch=$((current_patch + 1))
-          echo "Found existing tag $latest_tag, incrementing patch from $current_patch to $next_patch"
-        fi
-        
-        next_version="v${base_version}.${next_patch}"
-        
-        echo "next_version=$next_version" >> $GITHUB_OUTPUT
-        echo "tag_name=$next_version" >> $GITHUB_OUTPUT
-        echo "Next version will be: $next_version"
+      - name: Run tests
+        run: go test -v ./...
 
-    - name: Build binaries
-      run: |
-        # Create release directory
-        mkdir -p release
-        
-        # Build for different platforms
-        platforms=(
-          "linux/amd64"
-          "linux/arm64"
-          "windows/amd64"
-          "darwin/amd64"
-          "darwin/arm64"
-        )
-        
-        for platform in "${platforms[@]}"; do
-          IFS='/' read -r GOOS GOARCH <<< "$platform"
-          
-          # Set binary name with platform suffix
-          if [ "$GOOS" = "windows" ]; then
-            binary_name="go-package-analyzer-${GOOS}-${GOARCH}.exe"
-          else
-            binary_name="go-package-analyzer-${GOOS}-${GOARCH}"
-          fi
-          
-          # Build the binary
-          echo "Building for $GOOS/$GOARCH..."
-          env GOOS=$GOOS GOARCH=$GOARCH go build -ldflags="-s -w -X main.Version=${{ steps.version.outputs.next_version }}" -o "release/${binary_name}" ./cmd/server.go
-        done
-        
-        # Generate checksums
-        cd release
-        sha256sum * > checksums.txt
-        cd ..
+      - name: Build binaries
+        run: |
+          mkdir -p dist
+          GOOS=linux GOARCH=amd64 go build -o dist/go-package-analyzer-linux-amd64 ./cmd/analyzer
+          GOOS=darwin GOARCH=amd64 go build -o dist/go-package-analyzer-darwin-amd64 ./cmd/analyzer
+          GOOS=windows GOARCH=amd64 go build -o dist/go-package-analyzer-windows-amd64.exe ./cmd/analyzer
 
-    - name: Create Release
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      run: |
-        # Create release with GitHub CLI and auto-generated release notes
-        gh release create ${{ steps.version.outputs.tag_name }} \
-          --title "${{ steps.version.outputs.next_version }}" \
-          ./release/go-package-analyzer-linux-amd64 \
-          ./release/go-package-analyzer-linux-arm64 \
-          ./release/go-package-analyzer-windows-amd64.exe \
-          ./release/go-package-analyzer-darwin-amd64 \
-          ./release/go-package-analyzer-darwin-arm64 \
-          ./release/checksums.txt 
+      - name: Generate subject for provenance
+        id: hash
+        run: |
+          set -euo pipefail
+          cd dist
+          echo "hashes=$(sha256sum * | base64 -w0)" >> "$GITHUB_OUTPUT"
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: binaries
+          path: dist/
+          if-no-files-found: error
+
+  provenance:
+    needs: [build]
+    permissions:
+      actions: read   # To read the workflow path.
+      id-token: write # To sign the provenance.
+      contents: write # To add assets to a release.
+    uses: slsa-framework/slsa-github-generator/.github/workflows/generator_generic_slsa3.yml@v2.0.0
+    with:
+      base64-subjects: "${{ needs.build.outputs.hashes }}"
+      upload-assets: true # upload to a new release
+
+  release:
+    needs: [build, provenance]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write  # Required to create releases and upload artifacts
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: binaries
+          path: dist/
+
+      - name: Create Release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          tag_name=${GITHUB_REF#refs/tags/}
+          gh release create "$tag_name" \
+            --repo="$GITHUB_REPOSITORY" \
+            --title="Release ${tag_name}" \
+            --generate-notes \
+            dist/* 
