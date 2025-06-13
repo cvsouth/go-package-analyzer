@@ -1,9 +1,10 @@
 package main_test
 
 import (
-	"cvsouth/go-package-analyzer/internal/analyzer"
 	"encoding/json"
 	"testing"
+
+	"github.com/cvsouth/go-package-analyzer/internal/analyzer"
 )
 
 // Test the JSON serialization of response types that would be used by the server.

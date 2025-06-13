@@ -4,8 +4,8 @@ import (
 	"strings"
 	"testing"
 
-	"cvsouth/go-package-analyzer/internal/analyzer"
-	"cvsouth/go-package-analyzer/internal/visualizer"
+	"github.com/cvsouth/go-package-analyzer/internal/analyzer"
+	"github.com/cvsouth/go-package-analyzer/internal/visualizer"
 )
 
 func TestNew(t *testing.T) {

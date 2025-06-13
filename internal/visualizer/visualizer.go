@@ -7,7 +7,7 @@ import (
 	"strconv"
 	"strings"
 
-	"cvsouth/go-package-analyzer/internal/analyzer"
+	"github.com/cvsouth/go-package-analyzer/internal/analyzer"
 )
 
 // Constants for text formatting and color handling.

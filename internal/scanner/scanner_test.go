@@ -13,7 +13,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"cvsouth/go-package-analyzer/internal/scanner"
+	"github.com/cvsouth/go-package-analyzer/internal/scanner"
 )
 
 // Test helper functions and utilities
