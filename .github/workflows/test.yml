@@ -48,7 +48,7 @@ jobs:
         go test -fuzz=FuzzGenerateDOTContent -fuzztime=10s ./internal/visualizer
 
     - name: Run golangci-lint
-      uses: golangci/golangci-lint-action@25e2cdc5eb1d7a04fdc45ff538f1a00e960ae128 # v8.0.0
+      uses: golangci/golangci-lint-action@v8
       with:
         version: latest
 
