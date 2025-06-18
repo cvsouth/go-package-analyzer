@@ -28,11 +28,9 @@ Enter the local path to your Go project in the input field and click "Analyze". 
 
 If your project contains multiple applications such as in the case with a monorepo, enter the root path of the project and you will be able to switch between applications using the dropdown menu on the graph.
 
-## Demo
+## Screenshot
 
-Clicking the image below will navigate you to YouTube.
-
-[![Go Package Analyzer Demo](https://raw.githubusercontent.com/cvsouth/go-package-analyzer/refs/heads/main/screenshot.png)](https://www.youtube.com/watch?v=_1yVsU9JKJA)
+![screenshot](https://raw.githubusercontent.com/cvsouth/go-package-analyzer/refs/heads/main/screenshot.png)
 
 ## Development
 
