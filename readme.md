@@ -28,43 +28,6 @@ Enter the local path to your Go project in the input field and click "Analyze". 
 
 If your project contains multiple applications such as in the case with a monorepo, enter the root path of the project and you will be able to switch between applications using the dropdown menu on the graph.
 
-## Release Verification
-
-This project uses [SLSA](https://slsa.dev/) (Supply-chain Levels for Software Artifacts) provenance generation to ensure the integrity and authenticity of releases. All release artifacts are cryptographically signed and include verifiable build provenance.
-
-### Verifying Release Integrity
-
-To verify a downloaded release, you can use the [slsa-verifier](https://github.com/slsa-framework/slsa-verifier) tool:
-
-1. **Install slsa-verifier**:
-   ```bash
-   go install github.com/slsa-framework/slsa-verifier/v2/cli/slsa-verifier@latest
-   ```
-
-2. **Download the binary and its provenance** from the [releases page](https://github.com/cvsouth/go-package-analyzer/releases).
-
-3. **Verify the binary**:
-   ```bash
-   slsa-verifier verify-artifact go-package-analyzer-linux-amd64 \
-     --provenance-path go-package-analyzer-linux-amd64.intoto.jsonl \
-     --source-uri github.com/cvsouth/go-package-analyzer
-   ```
-
-### What This Guarantees
-
-✅ **Authenticity**: The binary was built from the exact source code in this repository  
-✅ **Integrity**: The binary hasn't been tampered with since it was built  
-✅ **Transparency**: Complete build environment and process information is available  
-✅ **Non-repudiation**: Cryptographic proof of the build's origin and time  
-
-The provenance files (`.intoto.jsonl`) contain machine-readable attestations that include:
-- Source repository and commit SHA
-- Build environment details
-- Build command and parameters
-- Timestamps and runner information
-
-For more information about SLSA and supply chain security, visit [slsa.dev](https://slsa.dev/).
-
 ## Demo
 
 Clicking the image below will navigate you to YouTube.
