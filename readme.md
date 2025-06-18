@@ -24,15 +24,9 @@ A simple tool to analyze and visualize Go package dependencies.
 
 Open your web browser and navigate to `http://localhost:6333`.
 
-Enter the local path to your Go project in the input field and click "Analyze". The tool will generate a visual representation of the package dependencies.
+## Screenshot
 
-If your project contains multiple applications such as in the case with a monorepo, enter the root path of the project and you will be able to switch between applications using the dropdown menu on the graph.
-
-## Demo
-
-Clicking the image below will navigate you to YouTube.
-
-[![Go Package Analyzer Demo](https://raw.githubusercontent.com/cvsouth/go-package-analyzer/refs/heads/main/screenshot.png)](https://www.youtube.com/watch?v=_1yVsU9JKJA)
+![screenshot](https://raw.githubusercontent.com/cvsouth/go-package-analyzer/refs/heads/main/screenshot.png)
 
 ## Development
 
