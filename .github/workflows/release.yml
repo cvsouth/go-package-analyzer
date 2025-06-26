@@ -6,7 +6,7 @@ on:
       - main  # Change this to your default branch if different
 
 jobs:
-  build:
+  release:
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -99,33 +99,6 @@ jobs:
           sha256sum * > checksums.txt
           cd ..
 
-      - name: Install cosign
-        uses: sigstore/cosign-installer@fb28c2b6339dcd94da6e4cbcbc5e888961f6f8c3 # v3.9.0
-
-      - name: Sign binaries with cosign
-        env:
-          COSIGN_EXPERIMENTAL: 1
-        run: |
-          cd dist
-          for file in *; do
-            cosign sign-blob --bundle "${file}.cosign.bundle" "$file"
-          done
-
-      - name: Generate subject for provenance
-        id: hash
-        run: |
-          set -euo pipefail
-          cd dist
-          # Include both binaries and signature bundles in the hash
-          echo "hashes=$(sha256sum * | base64 -w0)" >> "$GITHUB_OUTPUT"
-
-      - name: Upload artifacts
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
-        with:
-          name: binaries
-          path: dist/
-          if-no-files-found: error
-
       - name: Create Release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -139,37 +112,3 @@ jobs:
             ./release/go-package-analyzer-darwin-amd64 \
             ./release/go-package-analyzer-darwin-arm64 \
             ./release/checksums.txt
-
-  provenance:
-    needs: [build]
-    permissions:
-      actions: read   # To read the workflow path.
-      id-token: write # To sign the provenance.
-      contents: write # To add assets to a release.
-    uses: slsa-framework/slsa-github-generator/.github/workflows/generator_generic_slsa3.yml@v2.1.0
-    with:
-      base64-subjects: "${{ needs.build.outputs.hashes }}"
-      upload-assets: true # upload to a new release
-
-  release:
-    needs: [build, provenance]
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write  # Required to create releases and upload artifacts
-    steps:
-      - name: Download artifacts
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
-        with:
-          name: binaries
-          path: dist/
-
-      - name: Create Release
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          tag_name=${GITHUB_REF#refs/tags/}
-          gh release create "$tag_name" \
-            --repo="$GITHUB_REPOSITORY" \
-            --title="Release ${tag_name}" \
-            --generate-notes \
-            dist/*
