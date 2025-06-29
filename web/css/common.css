@@ -1,0 +1,10 @@
+
+* {
+    font-family: 'JetBrains Mono', 'Consolas', 'Monaco', 'Courier New', monospace !important;
+}
+
+html, body {
+    margin: 0;
+    padding: 0;
+    height: 100%;
+}
