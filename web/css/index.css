@@ -1,0 +1,149 @@
+
+/* Chrome flexbox fixes */
+.directory-tree {
+    max-height: 60vh;
+    overflow-y: auto;
+    /* Chrome scrollbar styling */
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
+    /* Prevent text selection in entire tree */
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
+    user-select: none;
+}
+
+.directory-tree::-webkit-scrollbar {
+    width: 8px;
+}
+
+.directory-tree::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.directory-tree::-webkit-scrollbar-thumb {
+    background-color: rgba(255, 255, 255, 0.2);
+    border-radius: 4px;
+}
+
+.directory-tree::-webkit-scrollbar-thumb:hover {
+    background-color: rgba(255, 255, 255, 0.3);
+}
+
+.directory-item {
+    cursor: pointer;
+    padding: 6px 8px;
+    border-radius: 4px;
+    transition: background-color 0.2s ease;
+    display: flex;
+    align-items: center;
+    min-height: 32px;
+    /* Chrome rendering optimization */
+    will-change: background-color;
+    -webkit-transform: translateZ(0);
+    transform: translateZ(0);
+    /* Prevent text selection */
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
+    user-select: none;
+}
+
+.directory-item:hover {
+    background-color: rgba(255, 255, 255, 0.1);
+}
+
+.directory-item.selected {
+    background-color: rgba(255, 255, 255, 0.2);
+}
+
+.directory-item.is-go-project {
+    font-weight: 600;
+    color: #00ACD7;
+}
+
+.expand-icon {
+    display: inline-flex;
+    width: 16px;
+    height: 16px;
+    align-items: center;
+    justify-content: center;
+    transition: transform 0.2s ease;
+    /* Chrome rendering optimization */
+    will-change: transform;
+    -webkit-transform: translateZ(0);
+    transform: translateZ(0);
+    /* Prevent text selection */
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
+    user-select: none;
+}
+
+.expand-icon.expanded {
+    transform: rotate(90deg);
+}
+
+.modal-overlay {
+    background-color: rgba(0, 0, 0, 0.85);
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+}
+
+/* Chrome-specific fixes for modal */
+.modal-content {
+    /* Ensure proper rendering in Chrome */
+    -webkit-transform: translateZ(0);
+    transform: translateZ(0);
+    /* Better border rendering */
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+}
+
+/* Go logo optimization for Chrome */
+.go-logo {
+    display: inline-block;
+    width: auto;
+    height: 12px;
+    vertical-align: middle;
+    /* Chrome SVG rendering optimization */
+    shape-rendering: geometricPrecision;
+    image-rendering: -webkit-optimize-contrast;
+}
+
+/* Sidebar fixes for Chrome */
+.recent-projects-sidebar {
+    /* Ensure proper layering in Chrome */
+    -webkit-transform: translateZ(0);
+    transform: translateZ(0);
+}
+
+/* Button improvements for Chrome */
+.btn-primary {
+    /* Better button rendering in Chrome */
+    -webkit-appearance: none;
+    appearance: none;
+    border: none;
+    outline: none;
+}
+
+.btn-primary:focus {
+    outline: 2px solid rgba(255, 255, 255, 0.3);
+    outline-offset: 2px;
+}
+
+/* Directory name truncation fix for Chrome */
+.directory-name {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    min-width: 0; /* Chrome flexbox fix */
+    max-width: 100%;
+}
+
+/* Chrome-specific fixes for directory tree container */
+#directoryContent {
+    min-height: 0;
+    flex: 1;
+}
