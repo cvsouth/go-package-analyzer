@@ -294,7 +294,7 @@ function createRecentProjectListItem(proj, idx, recent, renderRecentProjects) {
     li.title = proj.path;
     const left = document.createElement('div');
     left.className = 'flex-1 text-left truncate';
-    left.innerHTML = `<span class='font-mono text-sm'>${proj.path}</span>`;
+    left.textContent = proj.path;
     const removeBtn = document.createElement('button');
     removeBtn.className = 'ml-3 text-white/30 hover:text-red-400 text-2xl font-bold px-2 py-0.5 rounded';
     removeBtn.title = 'Remove from recent';
