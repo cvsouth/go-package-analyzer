@@ -22,7 +22,7 @@ A simple tool to analyze and visualize Go package dependencies.
 
 ## Usage
 
-Open your web browser and navigate to `http://localhost:6333`.
+Open `http://localhost:6333`.
 
 ## Screenshot
 
