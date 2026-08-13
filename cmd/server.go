@@ -73,7 +73,7 @@ func main() {
 
 	server.Handler = mux
 
-	slog.Info("Server starting on http://localhost:" + port)
+	slog.Info("Server starting", slog.String("url", "http://localhost:"+port))
 
 	sigChan := make(chan os.Signal, 1)
 	// Use only cross-platform signals that work on all systems
@@ -119,7 +119,7 @@ func handleAnalyze(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 
 	if r.Method != http.MethodGet {
-		slog.Info("handleAnalyze: Method not allowed", slog.String("method", r.Method))
+		slog.InfoContext(r.Context(), "handleAnalyze: Method not allowed", slog.String("method", r.Method))
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
@@ -170,7 +170,7 @@ func handleAnalyze(w http.ResponseWriter, r *http.Request) {
 	analyze := analyzer.New()
 	graph, err := analyze.AnalyzeFromFile(absEntryFile, !showExternal, excludeList)
 	if err != nil {
-		slog.Error("handleAnalyze: Analysis failed", slog.Any("error", err))
+		slog.ErrorContext(r.Context(), "handleAnalyze: Analysis failed", slog.Any("error", err))
 		sendJSONResponse(w, APIResponse{
 			Success: false,
 			Error:   fmt.Sprintf("Error analyzing codebase: %v", err),
@@ -201,7 +201,7 @@ func handleAnalyzeRepo(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 
 	if r.Method != http.MethodGet {
-		slog.Info("handleAnalyzeRepo: Method not allowed", slog.String("method", r.Method))
+		slog.InfoContext(r.Context(), "handleAnalyzeRepo: Method not allowed", slog.String("method", r.Method))
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
@@ -252,7 +252,7 @@ func handleAnalyzeRepo(w http.ResponseWriter, r *http.Request) {
 	analyze := analyzer.New()
 	result, err := analyze.AnalyzeMultipleEntryPoints(absRepoRoot, !showExternal, excludeList)
 	if err != nil {
-		slog.Error("handleAnalyzeRepo: Repository analysis failed", slog.Any("error", err))
+		slog.ErrorContext(r.Context(), "handleAnalyzeRepo: Repository analysis failed", slog.Any("error", err))
 		sendMultiEntryJSONResponse(w, MultiEntryAPIResponse{
 			Success: false,
 			Error:   fmt.Sprintf("Error analyzing repository: %v", err),
@@ -288,7 +288,7 @@ func handleScanDirectories(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 
 	if r.Method != http.MethodGet {
-		slog.Info("handleScanDirectories: Method not allowed", slog.String("method", r.Method))
+		slog.InfoContext(r.Context(), "handleScanDirectories: Method not allowed", slog.String("method", r.Method))
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
@@ -297,19 +297,23 @@ func handleScanDirectories(w http.ResponseWriter, r *http.Request) {
 	scan := scanner.New()
 	result, err := scan.GetFilesystemRoots()
 	if err != nil {
-		slog.Error("handleScanDirectories: Scan failed", slog.Any("error", err))
+		slog.ErrorContext(r.Context(), "handleScanDirectories: Scan failed", slog.Any("error", err))
 		if encodeErr := json.NewEncoder(w).Encode(scanner.ScanResult{
 			Success: false,
 			Error:   fmt.Sprintf("Error getting filesystem roots: %v", err),
 		}); encodeErr != nil {
-			slog.Error("handleScanDirectories: Error encoding error response", slog.Any("error", encodeErr))
+			slog.ErrorContext(
+				r.Context(),
+				"handleScanDirectories: Error encoding error response",
+				slog.Any("error", encodeErr),
+			)
 		}
 		return
 	}
 
 	// Return the scan result
 	if encodeErr := json.NewEncoder(w).Encode(result); encodeErr != nil {
-		slog.Error("handleScanDirectories: Error encoding response", slog.Any("error", encodeErr))
+		slog.ErrorContext(r.Context(), "handleScanDirectories: Error encoding response", slog.Any("error", encodeErr))
 		return
 	}
 }
@@ -319,7 +323,7 @@ func handleListDirectory(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 
 	if r.Method != http.MethodGet {
-		slog.Info("handleListDirectory: Method not allowed", slog.String("method", r.Method))
+		slog.InfoContext(r.Context(), "handleListDirectory: Method not allowed", slog.String("method", r.Method))
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
@@ -331,7 +335,11 @@ func handleListDirectory(w http.ResponseWriter, r *http.Request) {
 			Success: false,
 			Error:   "path parameter is required",
 		}); encodeErr != nil {
-			slog.Error("handleListDirectory: Error encoding error response", slog.Any("error", encodeErr))
+			slog.ErrorContext(
+				r.Context(),
+				"handleListDirectory: Error encoding error response",
+				slog.Any("error", encodeErr),
+			)
 		}
 		return
 	}
@@ -340,19 +348,28 @@ func handleListDirectory(w http.ResponseWriter, r *http.Request) {
 	scan := scanner.New()
 	result, err := scan.ListDirectory(dirPath)
 	if err != nil {
-		slog.Error("handleListDirectory: List failed", slog.Any("error", err), slog.String("path", dirPath))
+		slog.ErrorContext(
+			r.Context(),
+			"handleListDirectory: List failed",
+			slog.Any("error", err),
+			slog.String("path", dirPath),
+		)
 		if encodeErr := json.NewEncoder(w).Encode(scanner.DirectoryListResult{
 			Success: false,
 			Error:   fmt.Sprintf("Error listing directory: %v", err),
 		}); encodeErr != nil {
-			slog.Error("handleListDirectory: Error encoding error response", slog.Any("error", encodeErr))
+			slog.ErrorContext(
+				r.Context(),
+				"handleListDirectory: Error encoding error response",
+				slog.Any("error", encodeErr),
+			)
 		}
 		return
 	}
 
 	// Return the list result
 	if encodeErr := json.NewEncoder(w).Encode(result); encodeErr != nil {
-		slog.Error("handleListDirectory: Error encoding response", slog.Any("error", encodeErr))
+		slog.ErrorContext(r.Context(), "handleListDirectory: Error encoding response", slog.Any("error", encodeErr))
 		return
 	}
 }
