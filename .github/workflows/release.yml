@@ -5,6 +5,12 @@ on:
     branches:
       - main  # Change this to your default branch if different
 
+# The next version is derived from the tags that exist when the job starts, so
+# two runs at once compute the same version and all but one fail to create it.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
 jobs:
   release:
     runs-on: ubuntu-latest
