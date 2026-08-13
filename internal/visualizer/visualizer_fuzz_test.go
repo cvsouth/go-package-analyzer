@@ -67,17 +67,17 @@ func sanitizePackageName(name string) string {
 	name = strings.TrimSpace(name)
 
 	// Replace invalid characters with underscores
-	result := ""
+	var result strings.Builder
 	for _, r := range name {
 		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') ||
 			(r >= '0' && r <= '9') || r == '/' || r == '.' || r == '-' || r == '_' {
-			result += string(r)
+			result.WriteRune(r)
 		} else if r == ' ' {
-			result += "_"
+			result.WriteByte('_')
 		}
 	}
 
-	return result
+	return result.String()
 }
 
 // createTestGraphForFuzz creates a test dependency graph.
